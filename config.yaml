@@ -1,0 +1,14 @@
+merging:
+    minimum_merge_length: 175
+filtering:
+    minimum_base_quality: 10
+    allowable_kmer_mismatches: 1
+    reference_kmer_match_length: 31
+    minimum_passing_read_length: 51
+    minimum_sequence_abundance: 2
+    maximum_expected_error: 0.5
+clustering:
+    # maximum difference between an OTU member sequence and the representative sequence of that OTU
+    percent_of_allowable_difference: 3.0
+taxonomy:
+    prediction_confidence_cutoff: 0.8
