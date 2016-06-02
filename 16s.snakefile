@@ -1,5 +1,19 @@
 from subprocess import check_output
 
+"""
+remove quotes and replace commas with semicolon:
+
+    sed 's|\"||g' OTU_97.txt | sed 's|\,|\;|g' > OTU_97_phyloseq.txt
+
+create a phyloseq compatible biom file
+
+    biom convert -i OTU_97_phyloseq.txt -o OTU_97_phyloseq.biom --to-json --process-obs-metadata sc_separated
+
+edit the table type
+
+    sed 's|\"type\": \"Table\"|\"type\": \"OTU table\"|g' OTU_97_phyloseq.biom > OTU_97_phyloseq_type.biom
+
+"""
 
 def get_samples(eid):
     samples = []
@@ -29,6 +43,7 @@ def fix_tax_entry(tax, kingdom=""):
     # add the underscores
     underscores = dict()
     for k, v in taxonomy.items():
+        v = v.strip('"')
         underscores[k] = "%s__%s" % (k, v)
 
     # fill in missing
@@ -231,13 +246,26 @@ rule compile_counts_95:
         db = "results/{eid}/OTU_tax.fasta",
     output:
         txt = "results/{eid}/OTU_95.txt",
-        biom = "results/{eid}/OTU_95.biom"
     params:
         threshold = 0.95
     threads: 8
     shell:"usearch -usearch_global {input.fastq} -db {input.db} -strand plus \
-            -id {params.threshold} -otutabout {output.txt} -biomout {output.biom} \
+            -id {params.threshold} -otutabout {output.txt} \
             -threads {threads}"
+
+
+rule biom_95:
+    input:
+        "results/{eid}/OTU_95.txt"
+    output:
+        "results/{eid}/OTU_95.biom"
+    shell:
+        '''
+        sed 's|\"||g' {input} | sed 's|\,|\;|g' > OTU_95_converted.txt
+        biom convert -i OTU_95_converted.txt -o OTU_95_converted.biom --to-json --process-obs-metadata sc_separated
+        sed 's|\"type\": \"Table\"|\"type\": \"OTU table\"|g' OTU_95_converted.biom > {output}
+        rm OTU_95_converted.txt OTU_95_converted.biom
+        '''
 
 
 rule compile_counts_97:
@@ -246,13 +274,26 @@ rule compile_counts_97:
         db = "results/{eid}/OTU_tax.fasta",
     output:
         txt = "results/{eid}/OTU_97.txt",
-        biom = "results/{eid}/OTU_97.biom"
     params:
         threshold = 0.97
     threads: 8
     shell:"usearch -usearch_global {input.fastq} -db {input.db} -strand plus \
-            -id {params.threshold} -otutabout {output.txt} -biomout {output.biom} \
+            -id {params.threshold} -otutabout {output.txt} \
             -threads {threads}"
+
+
+rule biom_97:
+    input:
+        "results/{eid}/OTU_97.txt"
+    output:
+        "results/{eid}/OTU_97.biom"
+    shell:
+        '''
+        sed 's|\"||g' {input} | sed 's|\,|\;|g' > OTU_97_converted.txt
+        biom convert -i OTU_97_converted.txt -o OTU_97_converted.biom --to-json --process-obs-metadata sc_separated
+        sed 's|\"type\": \"Table\"|\"type\": \"OTU table\"|g' OTU_97_converted.biom > {output}
+        rm OTU_97_converted.txt OTU_97_converted.biom
+        '''
 
 
 rule compile_counts_99:
@@ -261,13 +302,26 @@ rule compile_counts_99:
         db = "results/{eid}/OTU_tax.fasta",
     output:
         txt = "results/{eid}/OTU_99.txt",
-        biom = "results/{eid}/OTU_99.biom"
     params:
         threshold = 0.99
     threads: 8
     shell:"usearch -usearch_global {input.fastq} -db {input.db} -strand plus \
-            -id {params.threshold} -otutabout {output.txt} -biomout {output.biom} \
+            -id {params.threshold} -otutabout {output.txt} \
             -threads {threads}"
+
+
+rule biom_99:
+    input:
+        "results/{eid}/OTU_99.txt"
+    output:
+        "results/{eid}/OTU_99.biom"
+    shell:
+        '''
+        sed 's|\"||g' {input} | sed 's|\,|\;|g' > OTU_99_converted.txt
+        biom convert -i OTU_99_converted.txt -o OTU_99_converted.biom --to-json --process-obs-metadata sc_separated
+        sed 's|\"type\": \"Table\"|\"type\": \"OTU table\"|g' OTU_99_converted.biom > {output}
+        rm OTU_99_converted.txt OTU_99_converted.biom
+        '''
 
 
 rule multiple_align:
