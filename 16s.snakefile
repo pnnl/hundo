@@ -1,19 +1,5 @@
 from subprocess import check_output
 
-"""
-remove quotes and replace commas with semicolon:
-
-    sed 's|\"||g' OTU_97.txt | sed 's|\,|\;|g' > OTU_97_phyloseq.txt
-
-create a phyloseq compatible biom file
-
-    biom convert -i OTU_97_phyloseq.txt -o OTU_97_phyloseq.biom --to-json --process-obs-metadata sc_separated
-
-edit the table type
-
-    sed 's|\"type\": \"Table\"|\"type\": \"OTU table\"|g' OTU_97_phyloseq.biom > OTU_97_phyloseq_type.biom
-
-"""
 
 def get_samples(eid):
     samples = []
@@ -81,21 +67,23 @@ USEARCH_VERSION = check_output("usearch --version", shell=True).strip()
 CLUSTALO_VERSION = check_output("/people/brow015/apps/cbb/clustalo/1.2.0/clustalo --version", shell=True).strip()
 EID = config['eid']
 SAMPLES = get_samples(EID)
+# name output folder appropriately
+CLUSTER_THRESHOLD = 100 - config['clustering']['percent_of_allowable_difference']
 
 
 rule all:
     input:
-        expand("results/{eid}/logs/quality_filtering_stats.txt", eid=EID),
-        expand("results/{eid}/OTU_99.txt", eid=EID),
-        expand("results/{eid}/OTU_99.biom", eid=EID),
-        expand("results/{eid}/OTU_97.txt", eid=EID),
-        expand("results/{eid}/OTU_97.biom", eid=EID),
-        expand("results/{eid}/OTU_95.txt", eid=EID),
-        expand("results/{eid}/OTU_95.biom", eid=EID),
-        expand("results/{eid}/OTU_tax.txt", eid=EID),
+        expand("results/{eid}/logs/{pid}/quality_filtering_stats.txt", eid=EID, pid=CLUSTER_THRESHOLD),
         expand("results/{eid}/demux/{sample}_R1.fastq", eid=EID, sample=SAMPLES),
         expand("results/{eid}/demux/{sample}_R2.fastq", eid=EID, sample=SAMPLES),
-        expand("results/{eid}/OTU.tree", eid=EID)
+        expand("results/{eid}/{pid}/OTU.txt", eid=EID, pid=CLUSTER_THRESHOLD),
+        expand("results/{eid}/{pid}/OTU.biom", eid=EID, pid=CLUSTER_THRESHOLD),
+        expand("results/{eid}/{pid}/OTU_tax.txt", eid=EID, pid=CLUSTER_THRESHOLD),
+        expand("results/{eid}/{pid}/OTU.tree", eid=EID, pid=CLUSTER_THRESHOLD),
+        expand("results/{eid}/{pid}/unfiltered/OTU.txt", eid=EID, pid=CLUSTER_THRESHOLD),
+        expand("results/{eid}/{pid}/unfiltered/OTU.biom", eid=EID, pid=CLUSTER_THRESHOLD),
+        expand("results/{eid}/{pid}/unfiltered/OTU_tax.txt", eid=EID, pid=CLUSTER_THRESHOLD),
+        expand("results/{eid}/{pid}/unfiltered/OTU.tree", eid=EID, pid=CLUSTER_THRESHOLD)
 
 
 rule make_reference_database:
@@ -110,6 +98,14 @@ rule make_reference_database:
         '''
         usearch -makeudb_utax {input.fasta} -taxconfsin {input.trained_parameters} -output {output}
         '''
+
+
+rule make_uchime_reference:
+    input: "ref/chimera/rdp_gold.fa"
+    output: "ref/chimera/udb/rdp_gold.udb"
+    version: USEARCH_VERSION
+    message: "Creating chimera reference index based on RDP classifier training database (v9) which contains 10,049 reference sequences."
+    shell: "usearch -makeudb_usearch {input} -output {output}"
 
 
 rule quality_filter_reads:
@@ -177,8 +173,7 @@ rule fastq_filter:
     message: "Filtering FASTQ with USEARCH with an expected maximum error rate of {params.maxee}"
     params:
         maxee = config['filtering']['maximum_expected_error']
-    shell: "usearch -fastq_filter {input} -fastq_maxee {params.maxee} \
-        -fastaout {output} -relabel Filt"
+    shell: "usearch -fastq_filter {input} -fastq_maxee {params.maxee} -fastaout {output} -relabel Filt"
 
 
 rule dereplicate_sequences:
@@ -191,40 +186,83 @@ rule dereplicate_sequences:
 
 rule cluster_sequences:
     input: "results/{eid}/uniques.fasta"
-    output: "results/{eid}/OTU.fasta"
+    output: "results/{eid}/{pid}/unfiltered/OTU.fasta"
     version: USEARCH_VERSION
     message: "Clustering sequences with USEARCH where OTUs have a minimum size of {params.minsize} and where the maximum difference between an OTU member sequence and the representative sequence of that OTU is {params.otu_radius_pct}%"
     params:
         minsize = config['filtering']['minimum_sequence_abundance'],
         otu_radius_pct = config['clustering']['percent_of_allowable_difference']
-    shell: "usearch -cluster_otus {input} -minsize {params.minsize} -otus {output} -relabel OTU_ \
-        -otu_radius_pct {params.otu_radius_pct}"
+    shell:
+        '''
+        usearch -cluster_otus {input} -minsize {params.minsize} -otus {output} -relabel OTU_ \
+            -otu_radius_pct {params.otu_radius_pct}
+        '''
+
+
+rule remove_chimeric_otus:
+    input:
+        fasta = "results/{eid}/{pid}/unfiltered/OTU.fasta",
+        reference = "ref/chimera/udb/rdp_gold.udb"
+    output: "results/{eid}/{pid}/OTU.fasta"
+    version: USEARCH_VERSION
+    message: "Chimera filtering OTU seed sequences against RDP classifier training database (v9), canonically known as rdp_gold.fa"
+    threads: 12
+    log: "results/{eid}/{pid}/logs/uchime_ref.log"
+    shell:
+        '''usearch -uchime_ref {input.fasta} -db {input.reference} -uchimeout {output} \
+            -strand plus -threads {threads} 2> {log}
+        '''
 
 
 rule utax:
     input:
-        fasta = "results/{eid}/OTU.fasta",
+        fasta = "results/{eid}/{pid}/OTU.fasta",
         db = "ref/rdp_16s_trainset15/udb/250.udb"
     output:
-        fasta = "results/{eid}/utax/OTU_tax.fasta",
-        txt = "results/{eid}/utax/OTU_tax.txt"
+        fasta = "results/{eid}/{pid}/utax/OTU_tax.fasta",
+        txt = "results/{eid}/{pid}/utax/OTU_tax.txt"
     version: USEARCH_VERSION
     message: "Assigning taxonomies with UTAX algorithm using USEARCH with a confidence cutoff of {params.utax_cutoff}"
     params:
         utax_cutoff = config['taxonomy']['prediction_confidence_cutoff']
     threads: 12
-    log: "results/{eid}/logs/utax.log"
-    shell: "usearch -utax {input.fasta} -db {input.db} -strand both -threads {threads} \
-        -fastaout {output.fasta} -utax_cutoff {params.utax_cutoff} -utaxout {output.txt} 2> {log}"
+    log: "results/{eid}/{pid}/logs/utax.log"
+    shell:
+        '''
+        usearch -utax {input.fasta} -db {input.db} -strand both -threads {threads} \
+            -fastaout {output.fasta} -utax_cutoff {params.utax_cutoff} \
+            -utaxout {output.txt} 2> {log}
+        '''
+
+
+rule utax_unfiltered:
+    input:
+        fasta = "results/{eid}/{pid}/unfiltered/OTU.fasta",
+        db = "ref/rdp_16s_trainset15/udb/250.udb"
+    output:
+        fasta = "results/{eid}/{pid}/unfiltered/utax/OTU_tax.fasta",
+        txt = "results/{eid}/{pid}/unfiltered/utax/OTU_tax.txt"
+    version: USEARCH_VERSION
+    message: "Assigning taxonomies with UTAX algorithm using USEARCH with a confidence cutoff of {params.utax_cutoff}"
+    params:
+        utax_cutoff = config['taxonomy']['prediction_confidence_cutoff']
+    threads: 12
+    log: "results/{eid}/{pid}/logs/utax.log"
+    shell:
+        '''
+        usearch -utax {input.fasta} -db {input.db} -strand both -threads {threads} \
+            -fastaout {output.fasta} -utax_cutoff {params.utax_cutoff} \
+            -utaxout {output.txt} 2> {log}
+        '''
 
 
 rule fix_utax_taxonomy:
     input:
-        fasta = "results/{eid}/utax/OTU_tax.fasta",
-        txt = "results/{eid}/utax/OTU_tax.txt"
+        fasta = "results/{eid}/{pid}/utax/OTU_tax.fasta",
+        txt = "results/{eid}/{pid}/utax/OTU_tax.txt"
     output:
-        fasta = "results/{eid}/OTU_tax.fasta",
-        txt = "results/{eid}/OTU_tax.txt"
+        fasta = "results/{eid}/{pid}/OTU_tax.fasta",
+        txt = "results/{eid}/{pid}/OTU_tax.txt"
     message: "Altering taxa to reflect QIIME style annotation"
     run:
         with open(input.fasta) as ifh, open(output.fasta, 'w') as ofh:
@@ -240,102 +278,136 @@ rule fix_utax_taxonomy:
                 print(toks[0], fix_tax_entry(toks[1]), fix_tax_entry(toks[2]), toks[3], sep="\t", file=ofh)
 
 
-rule compile_counts_95:
+rule fix_utax_taxonomy_unfiltered:
+    input:
+        fasta = "results/{eid}/{pid}/unfiltered/utax/OTU_tax.fasta",
+        txt = "results/{eid}/{pid}/unfiltered/utax/OTU_tax.txt"
+    output:
+        fasta = "results/{eid}/{pid}/unfiltered/OTU_tax.fasta",
+        txt = "results/{eid}/{pid}/unfiltered/OTU_tax.txt"
+    message: "Altering taxa to reflect QIIME style annotation"
+    run:
+        with open(input.fasta) as ifh, open(output.fasta, 'w') as ofh:
+            for line in ifh:
+                line = line.strip()
+                if not line.startswith(">OTU_"):
+                    print(line, file=ofh)
+                else:
+                    print(fix_fasta_tax_entry(line), file=ofh)
+        with open(input.txt) as ifh, open(output.txt, 'w') as ofh:
+            for line in ifh:
+                toks = line.strip().split("\t")
+                print(toks[0], fix_tax_entry(toks[1]), fix_tax_entry(toks[2]), toks[3], sep="\t", file=ofh)
+
+
+rule compile_counts:
     input:
         fastq = "results/{eid}/merged.fastq",
-        db = "results/{eid}/OTU_tax.fasta",
+        db = "results/{eid}/{pid}/OTU_tax.fasta",
     output:
-        txt = "results/{eid}/OTU_95.txt",
+        txt = "results/{eid}/{pid}/OTU.txt",
     params:
-        threshold = 0.95
-    threads: 8
-    shell:"usearch -usearch_global {input.fastq} -db {input.db} -strand plus \
-            -id {params.threshold} -otutabout {output.txt} \
-            -threads {threads}"
-
-
-rule biom_95:
-    input:
-        "results/{eid}/OTU_95.txt"
-    output:
-        "results/{eid}/OTU_95.biom"
+        threshold = config['mapping_to_otus']['read_identity_requirement']
+    threads: 12
     shell:
         '''
-        sed 's|\"||g' {input} | sed 's|\,|\;|g' > OTU_95_converted.txt
-        biom convert -i OTU_95_converted.txt -o OTU_95_converted.biom --to-json --process-obs-metadata sc_separated
-        sed 's|\"type\": \"Table\"|\"type\": \"OTU table\"|g' OTU_95_converted.biom > {output}
-        rm OTU_95_converted.txt OTU_95_converted.biom
+        usearch -usearch_global {input.fastq} -db {input.db} -strand plus \
+            -id {params.threshold} -otutabout {output.txt} \
+            -threads {threads}
         '''
 
 
-rule compile_counts_97:
+rule compile_counts_unfiltered:
     input:
         fastq = "results/{eid}/merged.fastq",
-        db = "results/{eid}/OTU_tax.fasta",
+        db = "results/{eid}/{pid}/unfiltered/OTU_tax.fasta",
     output:
-        txt = "results/{eid}/OTU_97.txt",
+        txt = "results/{eid}/{pid}/unfiltered/OTU.txt",
     params:
-        threshold = 0.97
-    threads: 8
-    shell:"usearch -usearch_global {input.fastq} -db {input.db} -strand plus \
-            -id {params.threshold} -otutabout {output.txt} \
-            -threads {threads}"
-
-
-rule biom_97:
-    input:
-        "results/{eid}/OTU_97.txt"
-    output:
-        "results/{eid}/OTU_97.biom"
+        threshold = config['mapping_to_otus']['read_identity_requirement']
+    threads: 12
     shell:
         '''
-        sed 's|\"||g' {input} | sed 's|\,|\;|g' > OTU_97_converted.txt
-        biom convert -i OTU_97_converted.txt -o OTU_97_converted.biom --to-json --process-obs-metadata sc_separated
-        sed 's|\"type\": \"Table\"|\"type\": \"OTU table\"|g' OTU_97_converted.biom > {output}
-        rm OTU_97_converted.txt OTU_97_converted.biom
+        usearch -usearch_global {input.fastq} -db {input.db} -strand plus \
+            -id {params.threshold} -otutabout {output.txt} \
+            -threads {threads}
         '''
 
 
-rule compile_counts_99:
+rule biom:
     input:
-        fastq = "results/{eid}/merged.fastq",
-        db = "results/{eid}/OTU_tax.fasta",
+        "results/{eid}/{pid}/OTU.txt"
     output:
-        txt = "results/{eid}/OTU_99.txt",
-    params:
-        threshold = 0.99
-    threads: 8
-    shell:"usearch -usearch_global {input.fastq} -db {input.db} -strand plus \
-            -id {params.threshold} -otutabout {output.txt} \
-            -threads {threads}"
-
-
-rule biom_99:
-    input:
-        "results/{eid}/OTU_99.txt"
-    output:
-        "results/{eid}/OTU_99.biom"
+        "results/{eid}/{pid}/OTU.biom"
     shell:
         '''
-        sed 's|\"||g' {input} | sed 's|\,|\;|g' > OTU_99_converted.txt
-        biom convert -i OTU_99_converted.txt -o OTU_99_converted.biom --to-json --process-obs-metadata sc_separated
-        sed 's|\"type\": \"Table\"|\"type\": \"OTU table\"|g' OTU_99_converted.biom > {output}
-        rm OTU_99_converted.txt OTU_99_converted.biom
+        sed 's|\"||g' {input} | sed 's|\,|\;|g' > results/{wildcards.eid}/{wildcards.pid}/OTU_converted.txt
+        biom convert -i results/{wildcards.eid}/{wildcards.pid}/OTU_converted.txt \
+            -o results/{wildcards.eid}/{wildcards.pid}/OTU_converted.biom --to-json \
+            --process-obs-metadata sc_separated
+        sed 's|\"type\": \"Table\"|\"type\": \"OTU table\"|g' results/{wildcards.eid}/{wildcards.pid}/OTU_converted.biom > {output}
+        rm results/{wildcards.eid}/{wildcards.pid}/OTU_converted.txt results/{wildcards.eid}/{wildcards.pid}/OTU_converted.biom
+        '''
+
+
+rule biom_unfiltered:
+    input:
+        "results/{eid}/{pid}/unfiltered/OTU.txt"
+    output:
+        "results/{eid}/{pid}/unfiltered/OTU.biom"
+    shell:
+        '''
+        sed 's|\"||g' {input} | sed 's|\,|\;|g' > results/{wildcards.eid}/{wildcards.pid}/unfiltered/OTU_converted.txt
+        biom convert -i results/{wildcards.eid}/{wildcards.pid}/unfiltered/OTU_converted.txt \
+            -o results/{wildcards.eid}/{wildcards.pid}/unfiltered/OTU_converted.biom --to-json \
+            --process-obs-metadata sc_separated
+        sed 's|\"type\": \"Table\"|\"type\": \"OTU table\"|g' results/{wildcards.eid}/{wildcards.pid}/unfiltered/OTU_converted.biom > {output}
+        rm results/{wildcards.eid}/{wildcards.pid}/unfiltered/OTU_converted.txt results/{wildcards.eid}/{wildcards.pid}/unfiltered/OTU_converted.biom
         '''
 
 
 rule multiple_align:
-    input: "results/{eid}/OTU.fasta"
-    output: "results/{eid}/OTU_aligned.fasta"
+    input: "results/{eid}/{pid}/OTU.fasta"
+    output: "results/{eid}/{pid}/OTU_aligned.fasta"
     message: "Multiple alignment of samples using Clustal Omega"
     version: CLUSTALO_VERSION
     threads: 12
-    shell: "/people/brow015/apps/cbb/clustalo/1.2.0/clustalo -i {input} -o {output} --outfmt=fasta --threads {threads} --force"
+    shell:
+        '''
+        /people/brow015/apps/cbb/clustalo/1.2.0/clustalo -i {input} -o {output} \
+            --outfmt=fasta --threads {threads} --force
+        '''
+
+
+rule multiple_align_unfiltered:
+    input: "results/{eid}/{pid}/unfiltered/OTU.fasta"
+    output: "results/{eid}/{pid}/unfiltered/OTU_aligned.fasta"
+    message: "Multiple alignment of samples using Clustal Omega"
+    version: CLUSTALO_VERSION
+    threads: 12
+    shell:
+        '''
+        /people/brow015/apps/cbb/clustalo/1.2.0/clustalo -i {input} -o {output} \
+            --outfmt=fasta --threads {threads} --force
+        '''
 
 
 rule newick_tree:
-    input: "results/{eid}/OTU_aligned.fasta"
-    output: "results/{eid}/OTU.tree"
-    message: "Building tree from aligned OTU sequences with FastTree"
-    log: "results/{eid}/logs/fasttree.log"
+    input: "results/{eid}/{pid}/OTU_aligned.fasta"
+    output: "results/{eid}/{pid}/OTU.tree"
+    message: "Building tree from aligned OTU sequences with FastTree2"
+    log: "results/{eid}/{pid}/logs/fasttree.log"
     shell: "FastTree -nt -gamma -spr 4 -log {log} -quiet {input} > {output}"
+
+
+rule newick_tree_unfiltered:
+    input: "results/{eid}/{pid}/unfiltered/OTU_aligned.fasta"
+    output: "results/{eid}/{pid}/unfiltered/OTU.tree"
+    message: "Building tree from aligned OTU sequences with FastTree2"
+    log: "results/{eid}/{pid}/logs/fasttree.log"
+    shell: "FastTree -nt -gamma -spr 4 -log {log} -quiet {input} > {output}"
+
+
+"""
+
+"""

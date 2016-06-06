@@ -12,3 +12,5 @@ clustering:
     percent_of_allowable_difference: 3.0
 taxonomy:
     prediction_confidence_cutoff: 0.8
+mapping_to_otus:
+    read_identity_requirement: 0.97
