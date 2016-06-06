@@ -1,12 +1,11 @@
+import os
 from subprocess import check_output
 
 
 def get_samples(eid):
-    samples = []
-    sample_names_file = "results/%s/sample_names.txt" % eid
-    with open(sample_names_file) as fh:
-        for line in fh:
-            samples.append(line.strip())
+    samples = set()
+    for f in os.listdir(os.path.join("results", eid, "demux")):
+        samples.add(f.partition(".")[0].partition("_")[0])
     return samples
 
 
