@@ -61,7 +61,7 @@ def fix_fasta_tax_entry(tax, kingdom=""):
 
 
 configfile: "config.yaml"
-ruleorder: utax > fix_utax_taxonomy
+ruleorder: cluster_sequences > remove_chimeric_otus > utax > fix_utax_taxonomy
 USEARCH_VERSION = check_output("usearch --version", shell=True).strip()
 CLUSTALO_VERSION = check_output("/people/brow015/apps/cbb/clustalo/1.2.0/clustalo --version", shell=True).strip()
 EID = config['eid']
