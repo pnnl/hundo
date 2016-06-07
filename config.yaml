@@ -9,7 +9,7 @@ filtering:
     maximum_expected_error: 0.5
 clustering:
     # maximum difference between an OTU member sequence and the representative sequence of that OTU
-    percent_of_allowable_difference: 3.0
+    percent_of_allowable_difference: 3
 taxonomy:
     prediction_confidence_cutoff: 0.8
 mapping_to_otus:
