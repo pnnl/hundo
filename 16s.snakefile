@@ -442,7 +442,7 @@ rule report:
         2014) to remove adapter sequences and PhiX with matching kmer length of {params.kmer_len}
         bp at a hamming distance of {params.ham_dist}. Reads shorter than {params.min_read_len} bp
         were discarded. Reads were merged using USEARCH (Edgar, 2010) with a minimum length
-        threshold of {params.min_merge_len} bp and maximum error rate of {params.maxee}%. Sequences
+        threshold of {params.min_merge_len} bp and maximum error rate of {params.max_ee}%. Sequences
         were dereplicated and clustered using distance-based, greedy clustering methods of USEARCH
         at {PID}% pairwise sequence identity among operational taxonomic unit (OTU) member
         sequences. Taxonomy was assigned to OTU sequences at a minimum identity cutoff of
