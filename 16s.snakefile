@@ -6,6 +6,7 @@ biom add-metadata -i some.biom -o phinch.biom --sample-metadata-fp tsv --output-
 #SampleID phinchID
 """
 import os
+from snakemake.utils import report
 from subprocess import check_output
 
 
@@ -89,7 +90,8 @@ rule all:
         expand("results/{eid}/{pid}/OTU_unfiltered.txt", eid=EID, pid=CLUSTER_THRESHOLD),
         expand("results/{eid}/{pid}/OTU_unfiltered.biom", eid=EID, pid=CLUSTER_THRESHOLD),
         expand("results/{eid}/{pid}/OTU_unfiltered_tax.txt", eid=EID, pid=CLUSTER_THRESHOLD),
-        expand("results/{eid}/{pid}/OTU_unfiltered.tree", eid=EID, pid=CLUSTER_THRESHOLD)
+        expand("results/{eid}/{pid}/OTU_unfiltered.tree", eid=EID, pid=CLUSTER_THRESHOLD),
+        expand("results/{eid}/{pid}/README.html", eid=EID, pid=CLUSTER_THRESHOLD)
 
 
 rule make_reference_database:
@@ -414,6 +416,49 @@ rule newick_tree_unfiltered:
     shell: "FastTree -nt -gamma -spr 4 -log {log} -quiet {input} > {output}"
 
 
-"""
+rule report:
+    input:
+        qual = "results/{eid}/logs/{pid}/quality_filtering_stats.txt".format(eid=EID, pid=CLUSTER_THRESHOLD)
+    params:
+        kmer_len = config['filtering']['reference_kmer_match_length'],
+        ham_dist = config['filtering']['allowable_kmer_mismatches'],
+        min_read_len = config['filtering']['minimum_passing_read_length'],
+        min_merge_len = config['merging']['minimum_merge_length'],
+        max_ee = config['filtering']['maximum_expected_error'],
+        tax_cutoff = config['taxonomy']['prediction_confidence_cutoff']
+    output:
+        html = "results/{eid}/{pid}/README.html"
+    run:
+        report("""
+        ======
+        README
+        ======
 
-"""
+        Methods
+        -------
+
+        Raw sequence reads were demultiplexed with using EA-Utils (Aronesty, 2013) not allowing any
+        mismatches in the barcode sequence. Reads were quality filtered with BBDuk2 (Bushnell,
+        2014) to remove adapter sequences and PhiX with matching kmer length of {params.kmer_len}
+        bp at a hamming distance of {params.ham_dist}. Reads shorter than {params.min_read_len} bp
+        were discarded. Reads were merged using USEARCH (Edgar, 2010) with a minimum length
+        threshold of {params.min_merge_len} bp and maximum error rate of {params.maxee}%. Sequences
+        were dereplicated and clustered using distance-based, greedy clustering methods of USEARCH
+        at {PID}% pairwise sequence identity among operational taxonomic unit (OTU) member
+        sequences. Taxonomy was assigned to OTU sequences at a minimum identity cutoff of
+        {params.tax_cutoff}% using the global alignment method implemented in USEARCH across RDP
+        trainset version 15. OTU seed sequences were filtered against RDP classifier training
+        database version 9 to identify chimeric OTUs using USEARCH. De novo prediction of chimeric
+        reads occurred as reads were assigned to OTUs.
+
+        References
+        ----------
+
+        Erik Aronesty (2013). TOBioiJ : "Comparison of Sequencing Utility Programs",
+        DOI:10.2174/1875036201307010001
+        Bushnell, B. (2014). BBMap: A Fast, Accurate, Splice-Aware Aligner.
+        URL https://sourceforge.net/projects/bbmap/
+        Edgar, RC (2010) Search and clustering orders of magnitude faster than BLAST,
+        Bioinformatics 26(19), 2460-2461. doi: 10.1093/bioinformatics/btq461
+
+        """, output.html)
