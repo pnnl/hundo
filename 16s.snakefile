@@ -430,9 +430,9 @@ rule report:
         html = "results/{eid}/{pid}/README.html"
     run:
         report("""
-        ======
-        README
-        ======
+        =============================================================
+        README - {wildcards.eid}
+        =============================================================
 
         Methods
         -------
@@ -444,7 +444,7 @@ rule report:
         were discarded. Reads were merged using USEARCH (Edgar, 2010) with a minimum length
         threshold of {params.min_merge_len} bp and maximum error rate of {params.max_ee}%. Sequences
         were dereplicated and clustered using distance-based, greedy clustering methods of USEARCH
-        at {PID}% pairwise sequence identity among operational taxonomic unit (OTU) member
+        at {wildcards.pid}% pairwise sequence identity among operational taxonomic unit (OTU) member
         sequences. Taxonomy was assigned to OTU sequences at a minimum identity cutoff of
         {params.tax_cutoff}% using the global alignment method implemented in USEARCH across RDP
         trainset version 15. OTU seed sequences were filtered against RDP classifier training
