@@ -418,7 +418,12 @@ rule newick_tree_unfiltered:
 
 rule report:
     input:
-        qual = "results/{eid}/logs/{pid}/quality_filtering_stats.txt".format(eid=EID, pid=CLUSTER_THRESHOLD)
+        file1 = "results/{eid}/{pid}/OTU.biom",
+        file2 = "results/{eid}/{pid}/OTU.txt",
+        file3 = "results/{eid}/{pid}/OTU_tax.fasta",
+        file4 = "results/{eid}/{pid}/OTU_tax.txt",
+        file5 = "results/{eid}/{pid}/OTU.tree"
+    shadow: "shallow"
     params:
         kmer_len = config['filtering']['reference_kmer_match_length'],
         ham_dist = config['filtering']['allowable_kmer_mismatches'],
@@ -429,10 +434,87 @@ rule report:
     output:
         html = "results/{eid}/{pid}/README.html"
     run:
+        from biom import parse_table
+        from biom.util import compute_counts_per_sample_stats
+        from operator import itemgetter
+        from numpy import std
+
+        summary_csv = "stats.csv"
+        sample_summary_csv = "samplesummary.csv"
+        samples_csv = "samples.csv"
+        with open(input.file1) as fh, open(summary_csv, 'w') as sumout, open(samples_csv, 'w') as samout, open(sample_summary_csv, 'w') as samplesum:
+            bt = parse_table(fh)
+            print("Samples", len(bt.ids()), sep=",", file=sumout)
+            print("OTUs", len(bt.ids(axis='observation')), sep=",", file=sumout)
+
+            min_counts, max_counts, median_counts, mean_counts, counts_per_samp = compute_counts_per_sample_stats(bt)
+
+            stats = compute_counts_per_sample_stats(bt)
+            sample_counts = list(stats[4].values())
+            print("Total Count", sum(sample_counts), sep=",", file=sumout)
+            print("Table Density (fraction of non-zero)", bt.get_table_density(), sep=",", file=sumout)
+
+            print("Minimum Count", stats[0], sep=",", file=samplesum)
+            print("Maximum Count", stats[1], sep=",", file=samplesum)
+            print("Median", stats[2], sep=",", file=samplesum)
+            print("Mean", stats[3], sep=",", file=samplesum)
+            print("Standard Deviation", std(sample_counts), sep=",", file=samplesum)
+
+            for k, v in sorted(counts_per_samp.items(), key=itemgetter(1)):
+                print(k, '%1.1f' % v, sep=",", file=samout)
+
         report("""
         =============================================================
         README - {wildcards.eid}
         =============================================================
+
+        .. contents::
+            :backlinks: none
+
+        Summary
+        -------
+
+        .. csv-table::
+            :file: {summary_csv}
+
+        Surviving Reads Per Sample
+        **************************
+
+        .. csv-table::
+            :file: {sample_summary_csv}
+
+
+        Output
+        ------
+
+        These files fall downstream of reference-based chimera removal. Non-chimera removed OTU
+        data is also available in the results directory.
+
+        Biom Table
+        **********
+
+        Counts observed per sample as represented in the biom file (file1_). This count is
+        representative of quality filtered reads that were assigned per sample to OTU seed
+        sequences.
+
+        .. csv-table:: Per Sample Count
+            :header: "Sample ID", "Count"
+            :file: {samples_csv}
+
+        OTU Table
+        *********
+
+        Tab delimited table of OTU and abundance per sample (file2_). The final column is the
+        taxonomy assignment of the given OTU.
+
+        Taxonomy was assigned to the OTU sequences at a cutoff of {params.tax_cutoff}%. The
+        confidence values can be observed within attached file4_.
+
+        OTU Sequences
+        *************
+
+        The OTU sequences in FASTA format (file3_) and aligned as newick tree (file5_).
+
 
         Methods
         -------
@@ -451,14 +533,15 @@ rule report:
         database version 9 to identify chimeric OTUs using USEARCH. De novo prediction of chimeric
         reads occurred as reads were assigned to OTUs.
 
+
         References
         ----------
 
-        Erik Aronesty (2013). TOBioiJ : "Comparison of Sequencing Utility Programs",
-        DOI:10.2174/1875036201307010001
-        Bushnell, B. (2014). BBMap: A Fast, Accurate, Splice-Aware Aligner.
-        URL https://sourceforge.net/projects/bbmap/
-        Edgar, RC (2010) Search and clustering orders of magnitude faster than BLAST,
-        Bioinformatics 26(19), 2460-2461. doi: 10.1093/bioinformatics/btq461
+        | Erik Aronesty (2013). TOBioiJ : "Comparison of Sequencing Utility Programs",
+          DOI:10.2174/1875036201307010001
+        | Bushnell, B. (2014). BBMap: A Fast, Accurate, Splice-Aware Aligner.
+          URL https://sourceforge.net/projects/bbmap/
+        | Edgar, RC (2010) Search and clustering orders of magnitude faster than BLAST,
+          Bioinformatics 26(19), 2460-2461. doi: 10.1093/bioinformatics/btq461
 
-        """, output.html)
+        """, output.html, metadata="Author: Joe Brown (joe.brown@pnnl.gov)", **input)
