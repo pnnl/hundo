@@ -13,7 +13,8 @@ from subprocess import check_output
 def get_samples(eid):
     samples = set()
     for f in os.listdir(os.path.join("results", eid, "demux")):
-        samples.add(f.partition(".")[0].partition("_")[0])
+        if f.endswith("fastq") or f.endswith("fq"):
+            samples.add(f.partition(".")[0].partition("_")[0])
     return samples
 
 
@@ -527,8 +528,8 @@ rule report:
         threshold of {params.min_merge_len} bp and maximum error rate of {params.max_ee}%. Sequences
         were dereplicated and clustered using distance-based, greedy clustering methods of USEARCH
         at {wildcards.pid}% pairwise sequence identity among operational taxonomic unit (OTU) member
-        sequences. Taxonomy was assigned to OTU sequences at a minimum identity cutoff of
-        {params.tax_cutoff}% using the global alignment method implemented in USEARCH across RDP
+        sequences. Taxonomy was assigned to OTU sequences at a minimum identity cutoff fraction of
+        {params.tax_cutoff} using the global alignment method implemented in USEARCH across RDP
         trainset version 15. OTU seed sequences were filtered against RDP classifier training
         database version 9 to identify chimeric OTUs using USEARCH. De novo prediction of chimeric
         reads occurred as reads were assigned to OTUs.
