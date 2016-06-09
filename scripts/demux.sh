@@ -5,8 +5,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --job-name="demux"
-#SBATCH --output="logs/demux_%A.out"
-#SBATCH --error="logs/demux_%A.err"
+#SBATCH --output="demux_%A.out"
+#SBATCH --error="demux_%A.err"
 
 
 set -o nounset
