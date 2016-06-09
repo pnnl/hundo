@@ -22,7 +22,7 @@ EXPECTED_COLS = ['DNA 16S Sequence ID', 'DNA 16S Barcode', 'DNA 16S Job ID',
                  'DNA ITS Sequence ID', 'DNA ITS Barcode', 'DNA ITS Job ID',
                  'cDNA 16S Sequence ID', 'cDNA 16S Barcode', 'cDNA 16S Job ID',
                  'cDNA ITS Sequence ID', 'cDNA ITS Barcode', 'cDNA ITS Job ID']
-
+DEMUXSH = "/people/brow015/mint/otu-16s/scripts/demux.sh"
 
 def valid_columns(cols, df):
     logging.debug("All columns: %s" % df.columns)
@@ -118,7 +118,7 @@ def files_from_dict(dct, eid, output_dir):
 def launch_jobs(files, eid):
     for runid, map_file in files.items():
         logging.info("Submitting demultiplexing job for run %s" % runid)
-        cmd = "sbatch demux.sh {runid} {eid}".format(runid=runid, eid=eid)
+        cmd = "sbatch {script} {runid} {eid}".format(script=DEMUXSH, runid=runid, eid=eid)
         check_call(cmd, shell=True)
 
 
