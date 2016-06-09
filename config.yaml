@@ -6,7 +6,7 @@ filtering:
     reference_kmer_match_length: 31
     minimum_passing_read_length: 51
     minimum_sequence_abundance: 2
-    maximum_expected_error: 0.5
+    maximum_expected_error: 1
 clustering:
     # maximum difference between an OTU member sequence and the representative sequence of that OTU
     percent_of_allowable_difference: 3
