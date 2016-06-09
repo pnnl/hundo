@@ -146,7 +146,7 @@ rule quality_filter_reads:
 
 rule combine_filtering_stats:
     input: expand("results/{eid}/{sample}_quality_filtering_stats.txt", eid=EID, sample=SAMPLES)
-    output: "results/{eid}/logs/{pid}/quality_filtering_stats.txt".format(eid=EID, pid=CLUSTER_THRESHOLD)
+    output: "results/{eid}/logs/quality_filtering_stats.txt".format(eid=EID, pid=CLUSTER_THRESHOLD)
     shell: "cat {input} > {output}"
 
 
@@ -516,6 +516,15 @@ rule report:
 
         The OTU sequences in FASTA format (file3_) and aligned as newick tree (file5_).
 
+        To build the tree, sequences were aligned using Clustelo (Sievers et al., 2011) and
+        FastTree2 (Price, et al., 2010) was used to generate the phylogenetic tree.
+
+        | Sievers F, Wilm A, Dineen D, Gibson TJ, Karplus K, Li W, Lopez R, McWilliam H, Remmert M,
+          Söding J, et al. 2011. Fast, scalable generation of high-quality protein multiple
+          sequence alignments using Clustal Omega. Mol Syst Biol 7: 539
+        | Price MN, Dehal PS, Arkin AP. 2010. FastTree 2--approximately maximum-likelihood trees
+          for large alignments. ed. A.F.Y. Poon. PLoS One 5: e9490
+
 
         Methods
         -------
@@ -534,9 +543,6 @@ rule report:
         database version 9 to identify chimeric OTUs using USEARCH. De novo prediction of chimeric
         reads occurred as reads were assigned to OTUs.
 
-
-        References
-        ----------
 
         | Erik Aronesty (2013). TOBioiJ : "Comparison of Sequencing Utility Programs",
           DOI:10.2174/1875036201307010001
