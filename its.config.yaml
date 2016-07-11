@@ -1,0 +1,42 @@
+# used to fill missing taxonomy entries or convert domain to kingdom;
+# more for use in conjunction with utax ITS reference database
+kingdom: "Fungi"
+taxonomy_database:
+    fasta: ref/unite_v7/fasta/refdb.fa
+    # joined read length dependent; utax taxconfs file
+    trained_parameters: ref/unite_v7/taxconfs/its2.tc
+    # used in building report
+    metadata: 'Unite version 7 database trained on the ITS2 region'
+    # citation for this tax database
+    citation: "Koljalg, Urmas, et al. Towards a unified paradigm for sequence-based identification of fungi. Molecular Ecology 22.21 (2013): 5271-5277."
+chimera_database:
+    fasta: ref/chimera/uchime_reference_dataset_01.01.2016.fasta
+    metadata: 'Unite UCHIME reference database version 01.01.2016'
+    citation: "Nilsson et al. 2015. A comprehensive, automatically updated fungal ITS sequence dataset for reference-based chimera control in environmental sequencing efforts. Microbes and Environments."
+merging:
+    # minimum passing read length after merging
+    minimum_merge_length: 175
+filtering:
+    # fastas to parse into kmers which are then trimmed from the sequences
+    adapters: ref/phix174_ill.ref.fa.gz,ref/adapters.fa
+    # lower than 20 to allow overlap the chance to increase the quality
+    minimum_base_quality: 10
+    # kmer mismatches allowed during adapter trim process
+    allowable_kmer_mismatches: 1
+    # length of kmer to search against sequences
+    reference_kmer_match_length: 31
+    # passing single-end read length, prior to merging
+    minimum_passing_read_length: 51
+    # after merging; the allowable limit of erroneous bases; accepts fractions as well
+    maximum_expected_error: 1
+clustering:
+    minimum_sequence_abundance: 2
+    # maximum difference between an OTU member sequence and the representative sequence of that OTU
+    percent_of_allowable_difference: 3
+taxonomy:
+    # OTU sequences are predicted at each phylogenetic level up to the point
+    # where confidence dips below this threshold
+    prediction_confidence_cutoff: 0.8
+mapping_to_otus:
+    # reflects the difference between OTU clusters to reduce ambiguous assignment
+    read_identity_requirement: 0.97

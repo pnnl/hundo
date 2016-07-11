@@ -21,36 +21,22 @@ def get_samples(eid):
 def fix_tax_entry(tax, kingdom=""):
     """
     >>> t = "p:Basidiomycota,c:Tremellomycetes,o:Tremellales,f:Tremellales_fam_Incertae_sedis,g:Cryptococcus"
-    >>> fix_tax_entry(t)
-    'k__,p__Basidiomycota,c__Tremellomycetes,o__Tremellales,f__Tremellales_fam_Incertae_sedis,g__Cryptococcus,s__'
+    >>> fix_tax_entry(t, "Fungi")
+    'k__Fungi,p__Basidiomycota,c__Tremellomycetes,o__Tremellales,f__Tremellales_fam_Incertae_sedis,g__Cryptococcus,s__'
     """
-
     if tax == "" or tax == "*":
         taxonomy = dict()
     else:
         taxonomy = dict(x.split(":") for x in tax.split(","))
-    if "d" in taxonomy:
+    if "d" in taxonomy and not "k" in taxonomy:
         taxonomy["k"] = taxonomy["d"]
     else:
         taxonomy["k"] = kingdom
 
-    # add the underscores
-    underscores = dict()
-    for k, v in taxonomy.items():
-        v = v.strip('"')
-        underscores[k] = "%s__%s" % (k, v)
-
-    # fill in missing
+    new_taxonomy = []
     for idx in "kpcofgs":
-        if idx not in underscores:
-            underscores[idx] = "%s__" % idx
-
-    # build needed string
-    new_taxonomy = ""
-    for idx in "kpcofgs":
-        new_taxonomy += underscores[idx] + ","
-
-    return new_taxonomy.strip(",")
+        new_taxonomy.append("%s__%s" % (idx, taxonomy.get(idx, "")))
+    return ",".join(new_taxonomy)
 
 
 def fix_fasta_tax_entry(tax, kingdom=""):
@@ -69,10 +55,11 @@ def fix_fasta_tax_entry(tax, kingdom=""):
     return "%s;tax=%s;" % (toks[0], new_tax)
 
 
-configfile: "config.yaml"
+# snakemake -s snakefile --configfile its.config.yaml
+configfile: "16s.config.yaml"
 ruleorder: cluster_sequences > remove_chimeric_otus > utax > utax_unfiltered > fix_utax_taxonomy > fix_utax_taxonomy_unfiltered > compile_counts > compile_counts_unfiltered > biom > biom_unfiltered > multiple_align > multiple_align_unfiltered > newick_tree > newick_tree_unfiltered
 USEARCH_VERSION = check_output("usearch --version", shell=True).strip()
-CLUSTALO_VERSION = check_output("/people/brow015/apps/cbb/clustalo/1.2.0/clustalo --version", shell=True).strip()
+CLUSTALO_VERSION = check_output("clustalo --version", shell=True).strip()
 EID = config['eid']
 SAMPLES = get_samples(EID)
 # name output folder appropriately
@@ -81,7 +68,7 @@ CLUSTER_THRESHOLD = 100 - config['clustering']['percent_of_allowable_difference'
 
 rule all:
     input:
-        expand("results/{eid}/logs/{pid}/quality_filtering_stats.txt", eid=EID, pid=CLUSTER_THRESHOLD),
+        expand("results/{eid}/logs/quality_filtering_stats.txt", eid=EID),
         expand("results/{eid}/demux/{sample}_R1.fastq", eid=EID, sample=SAMPLES),
         expand("results/{eid}/demux/{sample}_R2.fastq", eid=EID, sample=SAMPLES),
         expand("results/{eid}/{pid}/OTU.txt", eid=EID, pid=CLUSTER_THRESHOLD),
@@ -97,12 +84,12 @@ rule all:
 
 rule make_reference_database:
     input:
-        fasta = "ref/rdp_16s_trainset15/fasta/refdb.fa",
-        trained_parameters = "ref/rdp_16s_trainset15/taxconfs/250.tc"
+        fasta = config['taxonomy_database']['fasta'],
+        trained_parameters = config['taxonomy_database']['trained_parameters']
     output:
-        "ref/rdp_16s_trainset15/udb/250.udb"
+        os.path.splitext(config['taxonomy_database']['trained_parameters'])[0] + '.udb'
     version: USEARCH_VERSION
-    message: "Creating a UTAX database based on RDP trainset version 15 trained on 250 nt sequence length"
+    message: "Creating a UTAX database trained on {input.fasta} using {input.trained_parameters}"
     shell:
         '''
         usearch -makeudb_utax {input.fasta} -taxconfsin {input.trained_parameters} -output {output}
@@ -110,10 +97,10 @@ rule make_reference_database:
 
 
 rule make_uchime_reference:
-    input: "ref/chimera/rdp_gold.fa"
-    output: "ref/chimera/udb/rdp_gold.udb"
+    input: config['chimera_database']['fasta']
+    output: os.path.splitext(config['chimera_database']['fasta'])[0] + '.udb'
     version: USEARCH_VERSION
-    message: "Creating chimera reference index based on RDP classifier training database (v9) which contains 10,049 reference sequences."
+    message: "Creating chimera reference index based on {input}"
     shell: "usearch -makeudb_usearch {input} -output {output}"
 
 
@@ -127,7 +114,7 @@ rule quality_filter_reads:
         stats = temp("results/{eid}/{sample}_quality_filtering_stats.txt")
     message: "Filtering reads using BBDuk2 to remove adapters and phiX with matching kmer length of {params.k} at a hamming distance of {params.hdist} and quality trim both ends to Q{params.quality}. Reads shorter than {params.minlength} were discarded."
     params:
-        adapters = "ref/phix174_ill.ref.fa.gz,ref/adapters.fa",
+        adapters = config['filtering']['adapters'],
         quality = config['filtering']['minimum_base_quality'],
         hdist = config['filtering']['allowable_kmer_mismatches'],
         k = config['filtering']['reference_kmer_match_length'],
@@ -146,7 +133,7 @@ rule quality_filter_reads:
 
 rule combine_filtering_stats:
     input: expand("results/{eid}/{sample}_quality_filtering_stats.txt", eid=EID, sample=SAMPLES)
-    output: "results/{eid}/logs/quality_filtering_stats.txt".format(eid=EID, pid=CLUSTER_THRESHOLD)
+    output: "results/{eid}/logs/quality_filtering_stats.txt".format(eid=EID)
     shell: "cat {input} > {output}"
 
 
@@ -161,7 +148,6 @@ rule merge_reads:
         minimum_merge_length = config['merging']['minimum_merge_length']
     shell:
         '''
-        samplename={wildcards.sample}
         usearch -fastq_mergepairs {input.r1} -relabel @ -sample {wildcards.sample} \
             -fastq_minmergelen {params.minimum_merge_length} \
             -fastqout {output}
@@ -199,7 +185,7 @@ rule cluster_sequences:
     version: USEARCH_VERSION
     message: "Clustering sequences with USEARCH where OTUs have a minimum size of {params.minsize} and where the maximum difference between an OTU member sequence and the representative sequence of that OTU is {params.otu_radius_pct}%"
     params:
-        minsize = config['filtering']['minimum_sequence_abundance'],
+        minsize = config['clustering']['minimum_sequence_abundance'],
         otu_radius_pct = config['clustering']['percent_of_allowable_difference']
     shell:
         '''
@@ -211,10 +197,10 @@ rule cluster_sequences:
 rule remove_chimeric_otus:
     input:
         fasta = "results/{eid}/{pid}/OTU_unfiltered.fasta",
-        reference = "ref/chimera/udb/rdp_gold.udb"
+        reference = rules.make_uchime_database.output
     output: "results/{eid}/{pid}/OTU.fasta"
     version: USEARCH_VERSION
-    message: "Chimera filtering OTU seed sequences against RDP classifier training database (v9), canonically known as rdp_gold.fa"
+    message: "Chimera filtering OTU seed sequences against %s" % config['chimera_database']['metadata']
     threads: 12
     log: "results/{eid}/{pid}/logs/uchime_ref.log"
     shell:
@@ -226,7 +212,7 @@ rule remove_chimeric_otus:
 rule utax:
     input:
         fasta = "results/{eid}/{pid}/OTU.fasta",
-        db = "ref/rdp_16s_trainset15/udb/250.udb"
+        db = rules.make_tax_database.output
     output:
         fasta = "results/{eid}/{pid}/utax/OTU_tax.fasta",
         txt = "results/{eid}/{pid}/utax/OTU_tax.txt"
@@ -247,7 +233,7 @@ rule utax:
 rule utax_unfiltered:
     input:
         fasta = "results/{eid}/{pid}/OTU_unfiltered.fasta",
-        db = "ref/rdp_16s_trainset15/udb/250.udb"
+        db = rules.make_tax_database.output
     output:
         fasta = "results/{eid}/{pid}/utax/OTU_unfiltered_tax.fasta",
         txt = "results/{eid}/{pid}/utax/OTU_unfiltered_tax.txt"
@@ -272,6 +258,8 @@ rule fix_utax_taxonomy:
     output:
         fasta = "results/{eid}/{pid}/OTU_tax.fasta",
         txt = "results/{eid}/{pid}/OTU_tax.txt"
+    params:
+        kingdom = config['kingdom']
     message: "Altering taxa to reflect QIIME style annotation"
     run:
         with open(input.fasta) as ifh, open(output.fasta, 'w') as ofh:
@@ -280,11 +268,12 @@ rule fix_utax_taxonomy:
                 if not line.startswith(">OTU_"):
                     print(line, file=ofh)
                 else:
-                    print(fix_fasta_tax_entry(line), file=ofh)
+                    print(fix_fasta_tax_entry(line, params.kingdom), file=ofh)
         with open(input.txt) as ifh, open(output.txt, 'w') as ofh:
             for line in ifh:
                 toks = line.strip().split("\t")
-                print(toks[0], fix_tax_entry(toks[1]), fix_tax_entry(toks[2]), toks[3], sep="\t", file=ofh)
+                print(toks[0], fix_tax_entry(toks[1], params.kingdom),
+                      fix_tax_entry(toks[2], params.kingdom), toks[3], sep="\t", file=ofh)
 
 
 rule fix_utax_taxonomy_unfiltered:
@@ -294,6 +283,8 @@ rule fix_utax_taxonomy_unfiltered:
     output:
         fasta = "results/{eid}/{pid}/OTU_unfiltered_tax.fasta",
         txt = "results/{eid}/{pid}/OTU_unfiltered_tax.txt"
+    params:
+        kingdom = config['kingdom']
     message: "Altering taxa to reflect QIIME style annotation"
     run:
         with open(input.fasta) as ifh, open(output.fasta, 'w') as ofh:
@@ -302,11 +293,12 @@ rule fix_utax_taxonomy_unfiltered:
                 if not line.startswith(">OTU_"):
                     print(line, file=ofh)
                 else:
-                    print(fix_fasta_tax_entry(line), file=ofh)
+                    print(fix_fasta_tax_entry(line, params.kingdom), file=ofh)
         with open(input.txt) as ifh, open(output.txt, 'w') as ofh:
             for line in ifh:
                 toks = line.strip().split("\t")
-                print(toks[0], fix_tax_entry(toks[1]), fix_tax_entry(toks[2]), toks[3], sep="\t", file=ofh)
+                print(toks[0], fix_tax_entry(toks[1], params.kingdom),
+                      fix_tax_entry(toks[2], params.kingdom), toks[3], sep="\t", file=ofh)
 
 
 rule compile_counts:
@@ -352,10 +344,8 @@ rule biom:
         '''
         sed 's|\"||g' {input} | sed 's|\,|\;|g' > results/{wildcards.eid}/{wildcards.pid}/OTU_converted.txt
         biom convert -i results/{wildcards.eid}/{wildcards.pid}/OTU_converted.txt \
-            -o results/{wildcards.eid}/{wildcards.pid}/OTU_converted.biom --to-json \
-            --process-obs-metadata sc_separated
-        sed 's|\"type\": \"Table\"|\"type\": \"OTU table\"|g' results/{wildcards.eid}/{wildcards.pid}/OTU_converted.biom > {output}
-        rm results/{wildcards.eid}/{wildcards.pid}/OTU_converted.txt results/{wildcards.eid}/{wildcards.pid}/OTU_converted.biom
+            -o {output} --to-json \
+            --process-obs-metadata sc_separated --table-type "OTU table"
         '''
 
 
@@ -431,7 +421,12 @@ rule report:
         min_read_len = config['filtering']['minimum_passing_read_length'],
         min_merge_len = config['merging']['minimum_merge_length'],
         max_ee = config['filtering']['maximum_expected_error'],
-        tax_cutoff = config['taxonomy']['prediction_confidence_cutoff']
+        tax_cutoff = config['taxonomy']['prediction_confidence_cutoff'],
+        min_seq_abundance = config['clustering']['minimum_sequence_abundance'],
+        tax_metadata = config['taxonomy_database']['metadata'],
+        tax_citation = config['taxonomy_database']['citation'],
+        chimera_metadata = config['chimera_database']['metadata'],
+        chimera_citation = config['chimera_database']['citation']
     output:
         html = "results/{eid}/{pid}/README.html"
     run:
@@ -491,6 +486,16 @@ rule report:
         These files fall downstream of reference-based chimera removal. Non-chimera removed OTU
         data is also available in the results directory.
 
+        Chimera Removal
+        ***************
+
+        This occurs de novo during clustering and reference-based post clustering on the OTU seed
+        sequences.
+
+        Chimera database - {params.chimera_metadata}
+
+        | {params.chimera_citation}
+
         Biom Table
         **********
 
@@ -511,12 +516,16 @@ rule report:
         Taxonomy was assigned to the OTU sequences at a cutoff of {params.tax_cutoff}%. The
         confidence values can be observed within attached file4_.
 
+        Taxonomy database - {params.tax_metadata}
+
+        | {params.tax_citation}
+
         OTU Sequences
         *************
 
         The OTU sequences in FASTA format (file3_) and aligned as newick tree (file5_).
 
-        To build the tree, sequences were aligned using Clustelo (Sievers et al., 2011) and
+        To build the tree, sequences were aligned using Clustalo (Sievers et al., 2011) and
         FastTree2 (Price, et al., 2010) was used to generate the phylogenetic tree.
 
         | Sievers F, Wilm A, Dineen D, Gibson TJ, Karplus K, Li W, Lopez R, McWilliam H, Remmert M,
@@ -529,26 +538,29 @@ rule report:
         Methods
         -------
 
-        Raw sequence reads were demultiplexed with using EA-Utils (Aronesty, 2013) not allowing any
-        mismatches in the barcode sequence. Reads were quality filtered with BBDuk2 (Bushnell,
+        Raw sequence reads were demultiplexed with using EA-Utils (Aronesty, 2013) with zero
+        mismatches allowed in the barcode sequence. Reads were quality filtered with BBDuk2 (Bushnell,
         2014) to remove adapter sequences and PhiX with matching kmer length of {params.kmer_len}
         bp at a hamming distance of {params.ham_dist}. Reads shorter than {params.min_read_len} bp
         were discarded. Reads were merged using USEARCH (Edgar, 2010) with a minimum length
         threshold of {params.min_merge_len} bp and maximum error rate of {params.max_ee}%. Sequences
-        were dereplicated and clustered using distance-based, greedy clustering methods of USEARCH
-        at {wildcards.pid}% pairwise sequence identity among operational taxonomic unit (OTU) member
-        sequences. Taxonomy was assigned to OTU sequences at a minimum identity cutoff fraction of
-        {params.tax_cutoff} using the global alignment method implemented in USEARCH across RDP
-        trainset version 15. OTU seed sequences were filtered against RDP classifier training
-        database version 9 to identify chimeric OTUs using USEARCH. De novo prediction of chimeric
-        reads occurred as reads were assigned to OTUs.
+        were dereplicated (minimum sequence abundance = {params.min_seq_abundance}) and clustered
+        using the distance-based, greedy clustering method of USEARCH (Edgar, 2013) at
+        {wildcards.pid}% pairwise sequence identity among operational taxonomic unit (OTU) member
+        sequences. De novo prediction of chimeric sequences was performed using USEARCH during
+        clustering. Taxonomy was assigned to OTU sequences at a minimum identity cutoff fraction of
+        {params.tax_cutoff} using the global alignment method implemented in USEARCH across
+        {params.tax_metadata}. OTU seed sequences were filtered against {params.chimera_metadata}
+        to identify chimeric OTUs using USEARCH.
 
 
         | Erik Aronesty (2013). TOBioiJ : "Comparison of Sequencing Utility Programs",
           DOI:10.2174/1875036201307010001
         | Bushnell, B. (2014). BBMap: A Fast, Accurate, Splice-Aware Aligner.
           URL https://sourceforge.net/projects/bbmap/
-        | Edgar, RC (2010) Search and clustering orders of magnitude faster than BLAST,
+        | Edgar, RC (2010). Search and clustering orders of magnitude faster than BLAST,
           Bioinformatics 26(19), 2460-2461. doi: 10.1093/bioinformatics/btq461
+        | Edgar, RC (2013). UPARSE: highly accurate OTU sequences from microbial amplicon reads.
+          Nat Methods.
 
         """, output.html, metadata="Author: Joe Brown (joe.brown@pnnl.gov)", **input)
