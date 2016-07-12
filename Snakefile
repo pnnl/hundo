@@ -96,7 +96,7 @@ rule make_reference_database:
         '''
 
 
-rule make_uchime_reference:
+rule make_uchime_database:
     input: config['chimera_database']['fasta']
     output: os.path.splitext(config['chimera_database']['fasta'])[0] + '.udb'
     version: USEARCH_VERSION
