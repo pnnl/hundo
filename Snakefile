@@ -620,12 +620,6 @@ rule report:
         .. csv-table::
             :file: {summary_csv}
 
-        Surviving Reads Per Sample
-        **************************
-
-        .. csv-table::
-            :file: {sample_summary_csv}
-
         .. raw:: html
 
             <div id="raw-count-plot" style="min-width: 310px; height: 400px; margin: 0 auto"></div>
@@ -653,6 +647,9 @@ rule report:
         Counts observed per sample as represented in the biom file (file1_). This count is
         representative of quality filtered reads that were assigned per sample to OTU seed
         sequences.
+
+        .. csv-table::
+            :file: {sample_summary_csv}
 
         OTU Table
         *********
