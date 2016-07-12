@@ -56,7 +56,7 @@ def fix_fasta_tax_entry(tax, kingdom=""):
 
 
 # snakemake -s snakefile --configfile its.config.yaml
-configfile: "16s.config.yaml"
+# configfile: "16s.config.yaml"
 ruleorder: cluster_sequences > remove_chimeric_otus > utax > utax_unfiltered > fix_utax_taxonomy > fix_utax_taxonomy_unfiltered > compile_counts > compile_counts_unfiltered > biom > biom_unfiltered > multiple_align > multiple_align_unfiltered > newick_tree > newick_tree_unfiltered
 USEARCH_VERSION = check_output("usearch --version", shell=True).strip()
 CLUSTALO_VERSION = check_output("clustalo --version", shell=True).strip()
