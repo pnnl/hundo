@@ -438,6 +438,19 @@ rule newick_tree_unfiltered:
 
 
 rule report:
+    # ,
+    # {{
+    #     name: 'Filtered',
+    #     data: {filtered_counts_str}
+    # }},
+    # {{
+    #     name: 'Merged',
+    #     data: {merged_counts_str}
+    # }},
+    # {{
+    #     name: 'Assigned to OTUs',
+    #     data: {biom_counts_str}
+    # }}
     input:
         file1 = "results/{eid}/{pid}/OTU.biom",
         file2 = "results/{eid}/{pid}/OTU.txt",
@@ -446,7 +459,8 @@ rule report:
         file5 = "results/{eid}/{pid}/OTU.tree",
         raw_counts = expand("results/{eid}/logs/{sample}_R1.fastq.count", eid=EID, sample=SAMPLES),
         filtered_counts = expand("results/{eid}/logs/{sample}_filtered_R1.fastq.count", eid=EID, sample=SAMPLES),
-        merged_counts = expand("results/{eid}/logs/{sample}_merged.fastq.count", eid=EID, sample=SAMPLES)
+        merged_counts = expand("results/{eid}/logs/{sample}_merged.fastq.count", eid=EID, sample=SAMPLES),
+        css = "report.css"
     shadow: "shallow"
     params:
         kmer_len = config['filtering']['reference_kmer_match_length'],
@@ -493,38 +507,49 @@ rule report:
             for k, v in sorted(stats[4].items(), key=itemgetter(1)):
                 print(k, '%1.1f' % v, sep=",", file=samout)
 
-        raw_counts = []
-        filtered_counts = []
-        merged_counts = []
-        biom_counts = []
+        sample_counts = {}
 
         for sample in params.samples:
+            sample_counts['sample'] = {}
             # get raw count
             for f in input.raw_counts:
                 if sample in f:
                     with open(f) as fh:
                         for line in fh:
-                            raw_counts.append(int(line.strip()))
+                            sample_counts['sample']['raw_counts'] = int(line.strip())
                             break
             # filtered count
             for f in input.filtered_counts:
                 if sample in f:
                     with open(f) as fh:
                         for line in fh:
-                            filtered_counts.append(int(line.strip()))
+                            sample_counts['sample']['filtered_counts'] = int(line.strip())
                             break
             # merged count
             for f in input.merged_counts:
                 if sample in f:
                     with open(f) as fh:
                         for line in fh:
-                            merged_counts.append(int(line.strip()))
+                            sample_counts['sample']['merged_counts'] = int(line.strip())
                             break
-            # read count contribution to OTUs
-            biom_counts.append(biom_per_sample_counts[sample])
-        assert len(raw_counts) == len(filtered_counts) == len(merged_counts) == len(biom_counts)
 
-        samples_str = "['%s']" % "', '".join(map(str, params.samples))
+        raw_counts = []
+        filtered_counts = []
+        merged_counts = []
+        biom_counts = []
+        samps = []
+        # sort this by the raw counts total and get the strings for the report
+        for s in sorted(sample_counts.items(), key=lambda k_v: k_v[1]['raw_counts']):
+            samps.append(s[0])
+            raw_counts.append(s[1]['raw_counts'])
+            filtered_counts.append(s[1]['filtered_counts'])
+            merged_counts.append(s[1]['merged_counts'])
+            # read count contribution to OTUs
+            biom_counts.append(biom_per_sample_counts[s[0]])
+
+        # quoted strings within brackets
+        samples_str = "['%s']" % "', '".join(map(str, samps))
+        # non-quoted ints or floats within brackets
         raw_counts_str = "[%s]" % ", ".join(map(str, raw_counts))
         filtered_counts_str = "[%s]" % ", ".join(map(str, filtered_counts))
         merged_counts_str = "[%s]" % ", ".join(map(str, merged_counts))
@@ -536,35 +561,17 @@ rule report:
         =============================================================
 
         .. raw:: html
-
+            <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
             <script src="https://code.highcharts.com/highcharts.js"></script>
             <script src="https://code.highcharts.com/modules/exporting.js"></script>
-
-        .. contents::
-            :backlinks: none
-
-        Summary
-        -------
-
-        .. csv-table::
-            :file: {summary_csv}
-
-        Surviving Reads Per Sample
-        **************************
-
-        .. csv-table::
-            :file: {sample_summary_csv}
-
-        .. raw:: html
-
             <script type="text/javascript">
             $(function () {{
-                $('#count-plot').highcharts({{
+                $('#raw-count-plot').highcharts({{
                     chart: {{
                         type: 'column'
                     }},
                     title: {{
-                        text: 'Sample Sequence Counts'
+                        text: 'Raw Sequence Counts'
                     }},
                     xAxis: {{
                         categories: {samples_str},
@@ -596,26 +603,29 @@ rule report:
                     series: [{{
                                 name: 'Raw',
                                 data: {raw_counts_str}
-                            }},
-                            {{
-                                name: 'Filtered',
-                                data: {filtered_counts_str}
-                            }},
-                            {{
-                                name: 'Merged',
-                                data: {merged_counts_str}
-                            }},
-                            {{
-                                name: 'Assigned to OTUs',
-                                data: {biom_counts_str}
                             }}]
                     }});
             }});
             </script>
 
+        .. contents::
+            :backlinks: none
+
+        Summary
+        -------
+
+        .. csv-table::
+            :file: {summary_csv}
+
+        Surviving Reads Per Sample
+        **************************
+
+        .. csv-table::
+            :file: {sample_summary_csv}
+
         .. raw:: html
 
-            <div id="count-plot" style="min-width: 310px; height: 400px; margin: 0 auto"></div>
+            <div id="raw-count-plot" style="min-width: 310px; height: 400px; margin: 0 auto"></div>
 
 
         Output
@@ -701,5 +711,6 @@ rule report:
         | Edgar, RC (2013). UPARSE: highly accurate OTU sequences from microbial amplicon reads.
           Nat Methods.
 
-        """, output.html, metadata="Author: Joe Brown (joe.brown@pnnl.gov)", file1=input.file1,
-        file2=input.file2, file3=input.file3, file4=input.file4, file5=input.file5)
+        """, output.html, metadata="Author: Joe Brown (joe.brown@pnnl.gov)",
+        stylesheet=input.css, file1=input.file1, file2=input.file2, file3=input.file3,
+        file4=input.file4, file5=input.file5)
