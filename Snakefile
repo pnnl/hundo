@@ -639,8 +639,6 @@ rule report:
 
         Chimera database - {params.chimera_metadata}
 
-        | {params.chimera_citation}
-
         Biom Table
         **********
 
@@ -661,8 +659,6 @@ rule report:
         confidence values can be observed within attached file4_.
 
         Taxonomy database - {params.tax_metadata}
-
-        | {params.tax_citation}
 
         OTU Sequences
         *************
@@ -688,8 +684,8 @@ rule report:
         sequences. De novo prediction of chimeric sequences was performed using USEARCH during
         clustering. Taxonomy was assigned to OTU sequences at a minimum identity cutoff fraction of
         {params.tax_cutoff} using the global alignment method implemented in USEARCH across
-        {params.tax_metadata}. OTU seed sequences were filtered against {params.chimera_metadata}
-        to identify chimeric OTUs using USEARCH.
+        {params.tax_metadata} [7]. OTU seed sequences were filtered against {params.chimera_metadata}
+        [8] to identify chimeric OTUs using USEARCH.
 
 
         References
@@ -701,6 +697,8 @@ rule report:
         4. Bushnell, B. (2014). BBMap: A Fast, Accurate, Splice-Aware Aligner. URL https://sourceforge.net/projects/bbmap/
         5. Edgar, RC (2010). Search and clustering orders of magnitude faster than BLAST, Bioinformatics 26(19), 2460-2461. doi: 10.1093/bioinformatics/btq461
         6. Edgar, RC (2013). UPARSE: highly accurate OTU sequences from microbial amplicon reads. Nat Methods.
+        7. {params.tax_citation}
+        8. {params.chimera_citation}
 
         """, output.html, metadata="Author: Joe Brown (joe.brown@pnnl.gov)",
         stylesheet=input.css, file1=input.file1, file2=input.file2, file3=input.file3,
