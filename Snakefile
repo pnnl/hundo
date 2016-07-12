@@ -510,27 +510,27 @@ rule report:
         sample_counts = {}
 
         for sample in params.samples:
-            sample_counts['sample'] = {}
+            sample_counts[sample] = {}
             # get raw count
             for f in input.raw_counts:
                 if sample in f:
                     with open(f) as fh:
                         for line in fh:
-                            sample_counts['sample']['raw_counts'] = int(line.strip())
+                            sample_counts[sample]['raw_counts'] = int(line.strip())
                             break
             # filtered count
             for f in input.filtered_counts:
                 if sample in f:
                     with open(f) as fh:
                         for line in fh:
-                            sample_counts['sample']['filtered_counts'] = int(line.strip())
+                            sample_counts[sample]['filtered_counts'] = int(line.strip())
                             break
             # merged count
             for f in input.merged_counts:
                 if sample in f:
                     with open(f) as fh:
                         for line in fh:
-                            sample_counts['sample']['merged_counts'] = int(line.strip())
+                            sample_counts[sample]['merged_counts'] = int(line.strip())
                             break
 
         raw_counts = []
