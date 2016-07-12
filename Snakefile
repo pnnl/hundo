@@ -444,9 +444,9 @@ rule report:
         file3 = "results/{eid}/{pid}/OTU_tax.fasta",
         file4 = "results/{eid}/{pid}/OTU_tax.txt",
         file5 = "results/{eid}/{pid}/OTU.tree",
-        raw_counts = "results/{eid}/logs/{sample}_R1.fastq.count",
-        filtered_counts = "results/{eid}/logs/{sample}_filtered_R1.fastq.count",
-        merged_counts = "results/{eid}/logs/{sample}_merged.fastq.count"
+        raw_counts = expand("results/{eid}/logs/{sample}_R1.fastq.count", eid=EID, sample=SAMPLES),
+        filtered_counts = expand("results/{eid}/logs/{sample}_filtered_R1.fastq.count", eid=EID, sample=SAMPLES)),
+        merged_counts = expand("results/{eid}/logs/{sample}_merged.fastq.count", eid=EID, sample=SAMPLES))
     shadow: "shallow"
     params:
         kmer_len = config['filtering']['reference_kmer_match_length'],
