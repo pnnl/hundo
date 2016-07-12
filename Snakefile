@@ -559,7 +559,7 @@ rule report:
                         type: 'column'
                     }},
                     title: {{
-                        text: 'Raw Sequence Counts'
+                        text: 'Sequence Counts'
                     }},
                     xAxis: {{
                         categories: {samples_str},
