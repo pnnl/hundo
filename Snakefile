@@ -231,7 +231,7 @@ rule remove_chimeric_otus:
     output: "results/{eid}/{pid}/OTU.fasta"
     version: USEARCH_VERSION
     message: "Chimera filtering OTU seed sequences against %s" % config['chimera_database']['metadata']
-    threads: 12
+    threads: 11
     log: "results/{eid}/{pid}/logs/uchime_ref.log"
     shell:
         '''usearch -uchime_ref {input.fasta} -db {input.reference} -nonchimeras	{output} \
@@ -250,7 +250,7 @@ rule utax:
     message: "Assigning taxonomies with UTAX algorithm using USEARCH with a confidence cutoff of {params.utax_cutoff}"
     params:
         utax_cutoff = config['taxonomy']['prediction_confidence_cutoff']
-    threads: 12
+    threads: 11
     log: "results/{eid}/{pid}/logs/utax.log"
     shell:
         '''
@@ -271,7 +271,7 @@ rule utax_unfiltered:
     message: "Assigning taxonomies with UTAX algorithm using USEARCH with a confidence cutoff of {params.utax_cutoff}"
     params:
         utax_cutoff = config['taxonomy']['prediction_confidence_cutoff']
-    threads: 12
+    threads: 11
     log: "results/{eid}/{pid}/logs/unfiltered_utax.log"
     shell:
         '''
@@ -339,7 +339,7 @@ rule compile_counts:
         txt = "results/{eid}/{pid}/OTU.txt",
     params:
         threshold = config['mapping_to_otus']['read_identity_requirement']
-    threads: 12
+    threads: 11
     shell:
         '''
         usearch -usearch_global {input.fastq} -db {input.db} -strand plus \
@@ -356,7 +356,7 @@ rule compile_counts_unfiltered:
         txt = "results/{eid}/{pid}/OTU_unfiltered.txt",
     params:
         threshold = config['mapping_to_otus']['read_identity_requirement']
-    threads: 12
+    threads: 11
     shell:
         '''
         usearch -usearch_global {input.fastq} -db {input.db} -strand plus \
@@ -400,7 +400,7 @@ rule multiple_align:
     output: "results/{eid}/{pid}/OTU_aligned.fasta"
     message: "Multiple alignment of samples using Clustal Omega"
     version: CLUSTALO_VERSION
-    threads: 12
+    threads: 8
     shell:
         '''
         /people/brow015/apps/cbb/clustalo/1.2.0/clustalo -i {input} -o {output} \
@@ -413,7 +413,7 @@ rule multiple_align_unfiltered:
     output: "results/{eid}/{pid}/OTU_unfiltered_aligned.fasta"
     message: "Multiple alignment of samples using Clustal Omega"
     version: CLUSTALO_VERSION
-    threads: 12
+    threads: 8
     shell:
         '''
         /people/brow015/apps/cbb/clustalo/1.2.0/clustalo -i {input} -o {output} \
@@ -558,59 +558,59 @@ rule report:
         .. raw:: html
 
             <script type="text/javascript">
-            $(function () {
-                $('#count-plot').highcharts({
-                    chart: {
+            $(function () {{
+                $('#count-plot').highcharts({{
+                    chart: {{
                         type: 'column'
-                    },
-                    title: {
+                    }},
+                    title: {{
                         text: 'Sample Sequence Counts'
-                    },
-                    xAxis: {
+                    }},
+                    xAxis: {{
                         categories: {samples_str},
                         crosshair: true
-                    },
-                    yAxis: {
+                    }},
+                    yAxis: {{
                         min: 0,
-                        title: {
+                        title: {{
                             text: 'Count'
-                        }
-                    },
-                    tooltip: {
+                        }}
+                    }},
+                    tooltip: {{
                         headerFormat: '<span style="font-size:10px">{{point.key}}</span><table>',
-                        pointFormat: '<tr><td style="color:{series.color};padding:0">{{series.name}}: </td>' +
+                        pointFormat: '<tr><td style="color:{{series.color}};padding:0">{{series.name}}: </td>' +
                             '<td style="padding:0"><b>{{point.y:.1f}}</b></td></tr>',
                         footerFormat: '</table>',
                         shared: true,
                         useHTML: true
-                    },
-                    credits: {
+                    }},
+                    credits: {{
                         enabled: false
-                    },
-                    plotOptions: {
-                        column: {
+                    }},
+                    plotOptions: {{
+                        column: {{
                             pointPadding: 0.2,
                             borderWidth: 0
-                        }
-                    },
-                    series: [{
+                        }}
+                    }},
+                    series: [{{
                                 name: 'Raw',
                                 data: {raw_counts_str}
-                            },
-                            {
+                            }},
+                            {{
                                 name: 'Filtered',
                                 data: {filtered_counts_str}
-                            },
-                            {
+                            }},
+                            {{
                                 name: 'Merged',
                                 data: {merged_counts_str}
-                            },
-                            {
+                            }},
+                            {{
                                 name: 'Assigned to OTUs',
                                 data: {biom_counts_str}
-                            }]
-                    });
-            });
+                            }}]
+                    }});
+            }});
             </script>
 
         .. raw:: html
