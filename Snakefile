@@ -438,19 +438,6 @@ rule newick_tree_unfiltered:
 
 
 rule report:
-    # ,
-    # {{
-    #     name: 'Filtered',
-    #     data: {filtered_counts_str}
-    # }},
-    # {{
-    #     name: 'Merged',
-    #     data: {merged_counts_str}
-    # }},
-    # {{
-    #     name: 'Assigned to OTUs',
-    #     data: {biom_counts_str}
-    # }}
     input:
         file1 = "results/{eid}/{pid}/OTU.biom",
         file2 = "results/{eid}/{pid}/OTU.txt",
@@ -604,6 +591,21 @@ rule report:
                     series: [{{
                                 name: 'Raw',
                                 data: {raw_counts_str}
+                            }},
+                            {{
+                                name: 'Filtered',
+                                data: {filtered_counts_str},
+                                visible: false
+                            }},
+                            {{
+                                name: 'Merged',
+                                data: {merged_counts_str},
+                                visible: false
+                            }},
+                            {{
+                                name: 'Assigned to OTUs',
+                                data: {biom_counts_str},
+                                visible: false
                             }}]
                     }});
             }});
