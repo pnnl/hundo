@@ -82,7 +82,7 @@ rule all:
         expand("results/{eid}/{pid}/README.html", eid=EID, pid=CLUSTER_THRESHOLD)
 
 
-rule make_reference_database:
+rule make_tax_database:
     input:
         fasta = config['taxonomy_database']['fasta'],
         trained_parameters = config['taxonomy_database']['trained_parameters']
