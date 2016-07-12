@@ -654,10 +654,6 @@ rule report:
         representative of quality filtered reads that were assigned per sample to OTU seed
         sequences.
 
-        .. csv-table:: Per Sample Count
-            :header: "Sample ID", "Count"
-            :file: {samples_csv}
-
         OTU Table
         *********
 
