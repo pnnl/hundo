@@ -108,7 +108,7 @@ rule count_raw_reads:
     input:
         "results/{eid}/demux/{sample}_R1.fastq"
     output:
-        "results/{eid}/demux/{sample}_R1.fastq.count"
+        "results/{eid}/logs/{sample}_R1.fastq.count"
     shell:
         "awk '{{n++}}END{{print n/4}}' {input} > {output}"
 
@@ -144,7 +144,7 @@ rule count_filtered_reads:
     input:
         "results/{eid}/{sample}_filtered_R1.fastq"
     output:
-        temp("results/{eid}/{sample}_filtered_R1.fastq.count")
+        "results/{eid}/logs/{sample}_filtered_R1.fastq.count"
     shell:
         "awk '{{n++}}END{{print n/4}}' {input} > {output}"
 
@@ -176,7 +176,7 @@ rule count_joined_reads:
     input:
         "results/{eid}/{sample}_merged.fastq"
     output:
-        temp("results/{eid}/{sample}_merged.fastq.count")
+        "results/{eid}/logs/{sample}_merged.fastq.count"
     shell:
         "awk '{{n++}}END{{print n/4}}' {input} > {output}"
 
@@ -441,9 +441,9 @@ rule report:
         file3 = "results/{eid}/{pid}/OTU_tax.fasta",
         file4 = "results/{eid}/{pid}/OTU_tax.txt",
         file5 = "results/{eid}/{pid}/OTU.tree",
-        raw_counts = "results/{eid}/demux/{sample}_R1.fastq.count",
-        filtered_counts = "results/{eid}/{sample}_filtered_R1.fastq.count",
-        merged_counts = "results/{eid}/{sample}_merged.fastq.count"
+        raw_counts = "results/{eid}/logs/{sample}_R1.fastq.count",
+        filtered_counts = "results/{eid}/logs/{sample}_filtered_R1.fastq.count",
+        merged_counts = "results/{eid}/logs/{sample}_merged.fastq.count"
     shadow: "shallow"
     params:
         kmer_len = config['filtering']['reference_kmer_match_length'],
