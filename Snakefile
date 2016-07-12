@@ -104,6 +104,15 @@ rule make_uchime_database:
     shell: "usearch -makeudb_usearch {input} -output {output}"
 
 
+rule count_raw_reads:
+    input:
+        "results/{eid}/demux/{sample}_R1.fastq"
+    output:
+        "results/{eid}/demux/{sample}_R1.fastq.count"
+    shell:
+        "awk '{{n++}}END{{print n/4}}' {input} > {output}"
+
+
 rule quality_filter_reads:
     input:
         r1 = "results/{eid}/demux/{sample}_R1.fastq",
@@ -131,6 +140,15 @@ rule quality_filter_reads:
         '''
 
 
+rule count_filtered_reads:
+    input:
+        "results/{eid}/{sample}_filtered_R1.fastq"
+    output:
+        temp("results/{eid}/{sample}_filtered_R1.fastq.count")
+    shell:
+        "awk '{{n++}}END{{print n/4}}' {input} > {output}"
+
+
 rule combine_filtering_stats:
     input: expand("results/{eid}/{sample}_quality_filtering_stats.txt", eid=EID, sample=SAMPLES)
     output: "results/{eid}/logs/quality_filtering_stats.txt".format(eid=EID)
@@ -152,6 +170,15 @@ rule merge_reads:
             -fastq_minmergelen {params.minimum_merge_length} \
             -fastqout {output}
         '''
+
+
+rule count_joined_reads:
+    input:
+        "results/{eid}/{sample}_merged.fastq"
+    output:
+        temp("results/{eid}/{sample}_merged.fastq.count")
+    shell:
+        "awk '{{n++}}END{{print n/4}}' {input} > {output}"
 
 
 rule combine_merged_reads:
@@ -413,7 +440,10 @@ rule report:
         file2 = "results/{eid}/{pid}/OTU.txt",
         file3 = "results/{eid}/{pid}/OTU_tax.fasta",
         file4 = "results/{eid}/{pid}/OTU_tax.txt",
-        file5 = "results/{eid}/{pid}/OTU.tree"
+        file5 = "results/{eid}/{pid}/OTU.tree",
+        raw_counts = "results/{eid}/demux/{sample}_R1.fastq.count",
+        filtered_counts = "results/{eid}/{sample}_filtered_R1.fastq.count",
+        merged_counts = "results/{eid}/{sample}_merged.fastq.count"
     shadow: "shallow"
     params:
         kmer_len = config['filtering']['reference_kmer_match_length'],
@@ -426,7 +456,8 @@ rule report:
         tax_metadata = config['taxonomy_database']['metadata'],
         tax_citation = config['taxonomy_database']['citation'],
         chimera_metadata = config['chimera_database']['metadata'],
-        chimera_citation = config['chimera_database']['citation']
+        chimera_citation = config['chimera_database']['citation'],
+        samples = SAMPLES
     output:
         html = "results/{eid}/{pid}/README.html"
     run:
@@ -438,14 +469,14 @@ rule report:
         summary_csv = "stats.csv"
         sample_summary_csv = "samplesummary.csv"
         samples_csv = "samples.csv"
+        biom_per_sample_counts = {}
         with open(input.file1) as fh, open(summary_csv, 'w') as sumout, open(samples_csv, 'w') as samout, open(sample_summary_csv, 'w') as samplesum:
             bt = parse_table(fh)
             print("Samples", len(bt.ids()), sep=",", file=sumout)
             print("OTUs", len(bt.ids(axis='observation')), sep=",", file=sumout)
 
-            min_counts, max_counts, median_counts, mean_counts, counts_per_samp = compute_counts_per_sample_stats(bt)
-
             stats = compute_counts_per_sample_stats(bt)
+            biom_per_sample_counts = stats[4]
             sample_counts = list(stats[4].values())
             print("Total Count", sum(sample_counts), sep=",", file=sumout)
             print("Table Density (fraction of non-zero)", bt.get_table_density(), sep=",", file=sumout)
@@ -456,13 +487,55 @@ rule report:
             print("Mean", stats[3], sep=",", file=samplesum)
             print("Standard Deviation", std(sample_counts), sep=",", file=samplesum)
 
-            for k, v in sorted(counts_per_samp.items(), key=itemgetter(1)):
+            for k, v in sorted(stats[4].items(), key=itemgetter(1)):
                 print(k, '%1.1f' % v, sep=",", file=samout)
+
+        raw_counts = []
+        filtered_counts = []
+        merged_counts = []
+        biom_counts = []
+
+        for sample in params.samples:
+            # get raw count
+            for f in input.raw_counts:
+                if sample in f:
+                    with open(f) as fh:
+                        for line in fh:
+                            raw_counts.append(int(line.strip()))
+                            break
+            # filtered count
+            for f in input.filtered_counts:
+                if sample in f:
+                    with open(f) as fh:
+                        for line in fh:
+                            filtered_counts.append(int(line.strip()))
+                            break
+            # merged count
+            for f in input.merged_counts:
+                if sample in f:
+                    with open(f) as fh:
+                        for line in fh:
+                            merged_counts.append(int(line.strip()))
+                            break
+            # read count contribution to OTUs
+            biom_counts.append(biom_per_sample_counts[sample])
+        assert len(raw_counts) == len(filtered_counts) == len(merged_counts) == len(biom_counts)
+
+        samples_str = "['%s']" % "', '".join(map(str, params.samples))
+        raw_counts_str = "[%s]" % ", ".join(map(str, raw_counts))
+        filtered_counts_str = "[%s]" % ", ".join(map(str, filtered_counts))
+        merged_counts_str = "[%s]" % ", ".join(map(str, merged_counts))
+        biom_counts_str = "[%s]" % ", ".join(map(str, biom_counts))
 
         report("""
         =============================================================
         README - {wildcards.eid}
         =============================================================
+
+        .. raw:: html
+
+            <script src="https://code.highcharts.com/highcharts.js"></script>
+            <script src="https://code.highcharts.com/modules/exporting.js"></script>
 
         .. contents::
             :backlinks: none
@@ -478,6 +551,68 @@ rule report:
 
         .. csv-table::
             :file: {sample_summary_csv}
+
+        .. raw:: html
+
+            <script type="text/javascript">
+            $(function () {
+                $('#count-plot').highcharts({
+                    chart: {
+                        type: 'column'
+                    },
+                    title: {
+                        text: 'Sample Sequence Counts'
+                    },
+                    xAxis: {
+                        categories: {samples_str},
+                        crosshair: true
+                    },
+                    yAxis: {
+                        min: 0,
+                        title: {
+                            text: 'Count'
+                        }
+                    },
+                    tooltip: {
+                        headerFormat: '<span style="font-size:10px">{{point.key}}</span><table>',
+                        pointFormat: '<tr><td style="color:{series.color};padding:0">{{series.name}}: </td>' +
+                            '<td style="padding:0"><b>{{point.y:.1f}}</b></td></tr>',
+                        footerFormat: '</table>',
+                        shared: true,
+                        useHTML: true
+                    },
+                    credits: {
+                        enabled: false
+                    },
+                    plotOptions: {
+                        column: {
+                            pointPadding: 0.2,
+                            borderWidth: 0
+                        }
+                    },
+                    series: [{
+                                name: 'Raw',
+                                data: {raw_counts_str}
+                            },
+                            {
+                                name: 'Filtered',
+                                data: {filtered_counts_str}
+                            },
+                            {
+                                name: 'Merged',
+                                data: {merged_counts_str}
+                            },
+                            {
+                                name: 'Assigned to OTUs',
+                                data: {biom_counts_str}
+                            }]
+                    });
+            });
+            </script>
+
+        .. raw:: html
+
+            <div id="count-plot" style="min-width: 310px; height: 400px; margin: 0 auto"></div>
 
 
         Output
@@ -563,4 +698,5 @@ rule report:
         | Edgar, RC (2013). UPARSE: highly accurate OTU sequences from microbial amplicon reads.
           Nat Methods.
 
-        """, output.html, metadata="Author: Joe Brown (joe.brown@pnnl.gov)", **input)
+        """, output.html, metadata="Author: Joe Brown (joe.brown@pnnl.gov)", file1=input.file1,
+        file2=input.file2, file3=input.file3, file4=input.file4, file5=input.file5)
