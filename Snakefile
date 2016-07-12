@@ -669,27 +669,21 @@ rule report:
 
         The OTU sequences in FASTA format (file3_) and aligned as newick tree (file5_).
 
-        To build the tree, sequences were aligned using Clustalo (Sievers et al., 2011) and
-        FastTree2 (Price, et al., 2010) was used to generate the phylogenetic tree.
-
-        | Sievers F, Wilm A, Dineen D, Gibson TJ, Karplus K, Li W, Lopez R, McWilliam H, Remmert M,
-          Söding J, et al. 2011. Fast, scalable generation of high-quality protein multiple
-          sequence alignments using Clustal Omega. Mol Syst Biol 7: 539
-        | Price MN, Dehal PS, Arkin AP. 2010. FastTree 2--approximately maximum-likelihood trees
-          for large alignments. ed. A.F.Y. Poon. PLoS One 5: e9490
+        To build the tree, sequences were aligned using Clustalo [1] and
+        FastTree2 [2] was used to generate the phylogenetic tree.
 
 
         Methods
         -------
 
-        Raw sequence reads were demultiplexed with using EA-Utils (Aronesty, 2013) with zero
-        mismatches allowed in the barcode sequence. Reads were quality filtered with BBDuk2 (Bushnell,
-        2014) to remove adapter sequences and PhiX with matching kmer length of {params.kmer_len}
+        Raw sequence reads were demultiplexed with using EA-Utils [3] with zero
+        mismatches allowed in the barcode sequence. Reads were quality filtered with BBDuk2 [4]
+        to remove adapter sequences and PhiX with matching kmer length of {params.kmer_len}
         bp at a hamming distance of {params.ham_dist}. Reads shorter than {params.min_read_len} bp
-        were discarded. Reads were merged using USEARCH (Edgar, 2010) with a minimum length
+        were discarded. Reads were merged using USEARCH [5] with a minimum length
         threshold of {params.min_merge_len} bp and maximum error rate of {params.max_ee}%. Sequences
-        were dereplicated (minimum sequence abundance = {params.min_seq_abundance}) and clustered
-        using the distance-based, greedy clustering method of USEARCH (Edgar, 2013) at
+        were dereplicated (minimum sequence abundance of {params.min_seq_abundance}) and clustered
+        using the distance-based, greedy clustering method of USEARCH [6] at
         {wildcards.pid}% pairwise sequence identity among operational taxonomic unit (OTU) member
         sequences. De novo prediction of chimeric sequences was performed using USEARCH during
         clustering. Taxonomy was assigned to OTU sequences at a minimum identity cutoff fraction of
@@ -698,14 +692,15 @@ rule report:
         to identify chimeric OTUs using USEARCH.
 
 
-        | Erik Aronesty (2013). TOBioiJ : "Comparison of Sequencing Utility Programs",
-          DOI:10.2174/1875036201307010001
-        | Bushnell, B. (2014). BBMap: A Fast, Accurate, Splice-Aware Aligner.
-          URL https://sourceforge.net/projects/bbmap/
-        | Edgar, RC (2010). Search and clustering orders of magnitude faster than BLAST,
-          Bioinformatics 26(19), 2460-2461. doi: 10.1093/bioinformatics/btq461
-        | Edgar, RC (2013). UPARSE: highly accurate OTU sequences from microbial amplicon reads.
-          Nat Methods.
+        References
+        ----------
+
+        1. Sievers F, Wilm A, Dineen D, Gibson TJ, Karplus K, Li W, Lopez R, McWilliam H, Remmert M, Söding J, et al. 2011. Fast, scalable generation of high-quality protein multiple sequence alignments using Clustal Omega. Mol Syst Biol 7: 539
+        2. Price MN, Dehal PS, Arkin AP. 2010. FastTree 2--approximately maximum-likelihood trees for large alignments. ed. A.F.Y. Poon. PLoS One 5: e9490
+        3. Erik Aronesty (2013). TOBioiJ : "Comparison of Sequencing Utility Programs", DOI:10.2174/1875036201307010001
+        4. Bushnell, B. (2014). BBMap: A Fast, Accurate, Splice-Aware Aligner. URL https://sourceforge.net/projects/bbmap/
+        5. Edgar, RC (2010). Search and clustering orders of magnitude faster than BLAST, Bioinformatics 26(19), 2460-2461. doi: 10.1093/bioinformatics/btq461
+        6. Edgar, RC (2013). UPARSE: highly accurate OTU sequences from microbial amplicon reads. Nat Methods.
 
         """, output.html, metadata="Author: Joe Brown (joe.brown@pnnl.gov)",
         stylesheet=input.css, file1=input.file1, file2=input.file2, file3=input.file3,
