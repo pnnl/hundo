@@ -476,15 +476,17 @@ rule report:
         biom_per_sample_counts = {}
         with open(input.file1) as fh, open(summary_csv, 'w') as sumout, open(samples_csv, 'w') as samout, open(sample_summary_csv, 'w') as samplesum:
             bt = parse_table(fh)
-            print("Samples", len(bt.ids()), sep=",", file=sumout)
-            print("OTUs", len(bt.ids(axis='observation')), sep=",", file=sumout)
-
             stats = compute_counts_per_sample_stats(bt)
             biom_per_sample_counts = stats[4]
             sample_counts = list(stats[4].values())
-            print("Total Count", sum(sample_counts), sep=",", file=sumout)
-            print("Table Density (fraction of non-zero)", bt.get_table_density(), sep=",", file=sumout)
 
+            # summary
+            print("Samples", len(bt.ids()), sep=",", file=sumout)
+            print("OTUs", len(bt.ids(axis='observation')), sep=",", file=sumout)
+            print("OTU Total Count", sum(sample_counts), sep=",", file=sumout)
+            print("OTU Table Density", bt.get_table_density(), sep=",", file=sumout)
+
+            # sample summary within OTU table
             print("Minimum Count", stats[0], sep=",", file=samplesum)
             print("Maximum Count", stats[1], sep=",", file=samplesum)
             print("Median", stats[2], sep=",", file=samplesum)
@@ -500,21 +502,21 @@ rule report:
             sample_counts[sample] = {}
             # get raw count
             for f in input.raw_counts:
-                if sample in f:
+                if "%s_R1.fastq.count" % sample in f:
                     with open(f) as fh:
                         for line in fh:
                             sample_counts[sample]['raw_counts'] = int(line.strip())
                             break
             # filtered count
             for f in input.filtered_counts:
-                if sample in f:
+                if "%s_filtered_R1.fastq.count" % sample in f:
                     with open(f) as fh:
                         for line in fh:
                             sample_counts[sample]['filtered_counts'] = int(line.strip())
                             break
             # merged count
             for f in input.merged_counts:
-                if sample in f:
+                if "%s_merged.fastq.count" % sample in f:
                     with open(f) as fh:
                         for line in fh:
                             sample_counts[sample]['merged_counts'] = int(line.strip())
