@@ -18,5 +18,5 @@ Alternatively,
 sbatch run.sh bottos-its its.config.yaml
 usage
 
-config=${2:-16s.config.yaml}
+config=${2:-"resources/16s.config.yaml"}
 snakemake -j 24 --configfile $config --config eid=$1

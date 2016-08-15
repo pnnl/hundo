@@ -1,3 +1,5 @@
+![dag](resources/dag.png)
+
 # Install
 
 + snakemake
@@ -15,7 +17,7 @@ with a `.fastq` file extension.
 To run the workflow across 24 cores:
 
 ```
-snakemake -j 24 --configfile 16s.config.yaml --config eid=<EXPERIMENT NAME>
+snakemake -j 24 --configfile resources/16s.config.yaml --config eid=<EXPERIMENT NAME>
 ```
 
 Results are written to `results/<EXPERIMENT NAME>/<PERCENT ID>/`.
