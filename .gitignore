@@ -2,4 +2,6 @@ data
 results
 logs
 *.udb
+__pycache__
+.snakemake
 

@@ -1,7 +1,7 @@
 #!/bin/sh
 #SBATCH --account=mint
-#SBATCH --partition=slurm
-#SBATCH --time=200
+#SBATCH --partition=short
+#SBATCH --time=180
 #SBATCH --nodes=1
 #SBATCH --ntasks=24
 #SBATCH --job-name="otu-16s"
