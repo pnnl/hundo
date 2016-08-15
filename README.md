@@ -22,4 +22,6 @@ snakemake -j 24 --configfile resources/16s.config.yaml --config eid=<EXPERIMENT 
 
 Results are written to `results/<EXPERIMENT NAME>/<PERCENT ID>/`.
 
-Methods can be found in `results/<id>/<percent_identity>/README.html`
+Methods and summary data can be found in `results/<id>/<percent_identity>/README.html`
+
+![readme](resources/readme_example.png)
