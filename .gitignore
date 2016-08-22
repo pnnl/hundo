@@ -4,4 +4,6 @@ logs
 *.udb
 __pycache__
 .snakemake
-
+lca
+SLV_123_SSU.fasta
+SLV_123_SSU.tax

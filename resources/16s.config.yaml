@@ -1,6 +1,6 @@
 # used to fill missing taxonomy entries or convert domain to kingdom;
 # more for use in conjunction with utax ITS reference database
-kingdom: ""
+kingdom: "?"
 taxonomy_database:
     fasta: ref/rdp_16s_trainset15/fasta/refdb.fa
     # joined read length dependent; utax taxconfs file

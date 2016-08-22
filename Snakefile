@@ -18,11 +18,11 @@ def get_samples(eid):
     return samples
 
 
-def fix_tax_entry(tax, kingdom=""):
+def fix_tax_entry(tax, kingdom="?"):
     """
     >>> t = "p:Basidiomycota,c:Tremellomycetes,o:Tremellales,f:Tremellales_fam_Incertae_sedis,g:Cryptococcus"
     >>> fix_tax_entry(t, "Fungi")
-    'k__Fungi,p__Basidiomycota,c__Tremellomycetes,o__Tremellales,f__Tremellales_fam_Incertae_sedis,g__Cryptococcus,s__'
+    'k__Fungi,p__Basidiomycota,c__Tremellomycetes,o__Tremellales,f__Tremellales_fam_Incertae_sedis,g__Cryptococcus,s__?'
     """
     if tax == "" or tax == "*":
         taxonomy = dict()
@@ -35,15 +35,15 @@ def fix_tax_entry(tax, kingdom=""):
 
     new_taxonomy = []
     for idx in "kpcofgs":
-        new_taxonomy.append("%s__%s" % (idx, taxonomy.get(idx, "")))
+        new_taxonomy.append("%s__%s" % (idx, taxonomy.get(idx, "?")))
     return ",".join(new_taxonomy)
 
 
-def fix_fasta_tax_entry(tax, kingdom=""):
+def fix_fasta_tax_entry(tax, kingdom="?"):
     """
     >>> t = ">OTU_7;tax=p:Basidiomycota,c:Microbotryomycetes,o:Sporidiobolales,f:Sporidiobolales_fam_Incertae_sedis,g:Rhodotorula;"
     >>> fix_fasta_tax_entry(t)
-    '>OTU_7;tax=k__,p__Basidiomycota,c__Microbotryomycetes,o__Sporidiobolales,f__Sporidiobolales_fam_Incertae_sedis,g__Rhodotorula,s__;'
+    '>OTU_7;tax=k__,p__Basidiomycota,c__Microbotryomycetes,o__Sporidiobolales,f__Sporidiobolales_fam_Incertae_sedis,g__Rhodotorula,s__?;'
     """
     toks = tax.split(";")
     otu = toks[0]
@@ -193,7 +193,7 @@ rule combine_merged_reads:
 
 rule fastq_filter:
     input: "results/{eid}/merged.fastq"
-    output: "results/{eid}/merged_%f.fasta" % config['filtering']['maximum_expected_error']
+    output: "results/{eid}/merged_%s.fasta" % str(config['filtering']['maximum_expected_error'])
     version: USEARCH_VERSION
     message: "Filtering FASTQ with USEARCH with an expected maximum error rate of {params.maxee}"
     params:
@@ -244,8 +244,8 @@ rule utax:
         fasta = "results/{eid}/{pid}/OTU.fasta",
         db = rules.make_tax_database.output
     output:
-        fasta = "results/{eid}/{pid}/utax/OTU_tax.fasta",
-        txt = "results/{eid}/{pid}/utax/OTU_tax.txt"
+        fasta = temp("results/{eid}/{pid}/OTU_tax_utax.fasta"),
+        txt = temp("results/{eid}/{pid}/OTU_tax_tax.txt")
     version: USEARCH_VERSION
     message: "Assigning taxonomies with UTAX algorithm using USEARCH with a confidence cutoff of {params.utax_cutoff}"
     params:
@@ -260,34 +260,13 @@ rule utax:
         '''
 
 
-rule utax_unfiltered:
-    input:
-        fasta = "results/{eid}/{pid}/OTU_unfiltered.fasta",
-        db = rules.make_tax_database.output
-    output:
-        fasta = "results/{eid}/{pid}/utax/OTU_unfiltered_tax.fasta",
-        txt = "results/{eid}/{pid}/utax/OTU_unfiltered_tax.txt"
-    version: USEARCH_VERSION
-    message: "Assigning taxonomies with UTAX algorithm using USEARCH with a confidence cutoff of {params.utax_cutoff}"
-    params:
-        utax_cutoff = config['taxonomy']['prediction_confidence_cutoff']
-    threads: 11
-    log: "results/{eid}/{pid}/logs/unfiltered_utax.log"
-    shell:
-        '''
-        usearch -utax {input.fasta} -db {input.db} -strand both -threads {threads} \
-            -fastaout {output.fasta} -utax_cutoff {params.utax_cutoff} \
-            -utaxout {output.txt} 2> {log}
-        '''
-
-
 rule fix_utax_taxonomy:
     input:
-        fasta = "results/{eid}/{pid}/utax/OTU_tax.fasta",
-        txt = "results/{eid}/{pid}/utax/OTU_tax.txt"
+        fasta = rules.utax.output.fasta,
+        txt = rules.utax.output.txt
     output:
-        fasta = "results/{eid}/{pid}/OTU_tax.fasta",
-        txt = "results/{eid}/{pid}/OTU_tax.txt"
+        fasta = "results/{eid}/{pid}/rdp/OTU_tax.fasta",
+        txt = "results/{eid}/{pid}/rdp/OTU_tax.txt"
     params:
         kingdom = config['kingdom']
     message: "Altering taxa to reflect QIIME style annotation"
@@ -305,30 +284,8 @@ rule fix_utax_taxonomy:
                 print(toks[0], fix_tax_entry(toks[1], params.kingdom),
                       fix_tax_entry(toks[2], params.kingdom), toks[3], sep="\t", file=ofh)
 
-
-rule fix_utax_taxonomy_unfiltered:
-    input:
-        fasta = "results/{eid}/{pid}/utax/OTU_unfiltered_tax.fasta",
-        txt = "results/{eid}/{pid}/utax/OTU_unfiltered_tax.txt"
-    output:
-        fasta = "results/{eid}/{pid}/OTU_unfiltered_tax.fasta",
-        txt = "results/{eid}/{pid}/OTU_unfiltered_tax.txt"
-    params:
-        kingdom = config['kingdom']
-    message: "Altering taxa to reflect QIIME style annotation"
-    run:
-        with open(input.fasta) as ifh, open(output.fasta, 'w') as ofh:
-            for line in ifh:
-                line = line.strip()
-                if not line.startswith(">OTU_"):
-                    print(line, file=ofh)
-                else:
-                    print(fix_fasta_tax_entry(line, params.kingdom), file=ofh)
-        with open(input.txt) as ifh, open(output.txt, 'w') as ofh:
-            for line in ifh:
-                toks = line.strip().split("\t")
-                print(toks[0], fix_tax_entry(toks[1], params.kingdom),
-                      fix_tax_entry(toks[2], params.kingdom), toks[3], sep="\t", file=ofh)
+# makeblastdb -in ~/Downloads/lotus_pipeline/DB/SLV_123_SSU.fasta -dbtype nucl
+# blastn -query OTU.fasta -db ~/Downloads/lotus_pipeline/DB/SLV_123_SSU.fasta -num_alignments 200 -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore" -out airfilter_blastn.tab -num_threads 8
 
 
 rule compile_counts:
@@ -337,23 +294,6 @@ rule compile_counts:
         db = "results/{eid}/{pid}/OTU_tax.fasta",
     output:
         txt = "results/{eid}/{pid}/OTU.txt",
-    params:
-        threshold = config['mapping_to_otus']['read_identity_requirement']
-    threads: 11
-    shell:
-        '''
-        usearch -usearch_global {input.fastq} -db {input.db} -strand plus \
-            -id {params.threshold} -otutabout {output.txt} \
-            -threads {threads}
-        '''
-
-
-rule compile_counts_unfiltered:
-    input:
-        fastq = "results/{eid}/merged.fastq",
-        db = "results/{eid}/{pid}/OTU_unfiltered_tax.fasta",
-    output:
-        txt = "results/{eid}/{pid}/OTU_unfiltered.txt",
     params:
         threshold = config['mapping_to_otus']['read_identity_requirement']
     threads: 11
@@ -379,22 +319,6 @@ rule biom:
         '''
 
 
-rule biom_unfiltered:
-    input:
-        "results/{eid}/{pid}/OTU_unfiltered.txt"
-    output:
-        "results/{eid}/{pid}/OTU_unfiltered.biom"
-    shell:
-        '''
-        sed 's|\"||g' {input} | sed 's|\,|\;|g' > results/{wildcards.eid}/{wildcards.pid}/OTU_unfiltered_converted.txt
-        biom convert -i results/{wildcards.eid}/{wildcards.pid}/OTU_unfiltered_converted.txt \
-            -o results/{wildcards.eid}/{wildcards.pid}/OTU_unfiltered_converted.biom --to-json \
-            --process-obs-metadata sc_separated
-        sed 's|\"type\": \"Table\"|\"type\": \"OTU table\"|g' results/{wildcards.eid}/{wildcards.pid}/OTU_unfiltered_converted.biom > {output}
-        rm results/{wildcards.eid}/{wildcards.pid}/OTU_unfiltered_converted.txt results/{wildcards.eid}/{wildcards.pid}/OTU_unfiltered_converted.biom
-        '''
-
-
 rule multiple_align:
     input: "results/{eid}/{pid}/OTU.fasta"
     output: "results/{eid}/{pid}/OTU_aligned.fasta"
@@ -408,30 +332,9 @@ rule multiple_align:
         '''
 
 
-rule multiple_align_unfiltered:
-    input: "results/{eid}/{pid}/OTU_unfiltered.fasta"
-    output: "results/{eid}/{pid}/OTU_unfiltered_aligned.fasta"
-    message: "Multiple alignment of samples using Clustal Omega"
-    version: CLUSTALO_VERSION
-    threads: 8
-    shell:
-        '''
-        /people/brow015/apps/cbb/clustalo/1.2.0/clustalo -i {input} -o {output} \
-            --outfmt=fasta --threads {threads} --force
-        '''
-
-
 rule newick_tree:
     input: "results/{eid}/{pid}/OTU_aligned.fasta"
     output: "results/{eid}/{pid}/OTU.tree"
-    message: "Building tree from aligned OTU sequences with FastTree2"
-    log: "results/{eid}/{pid}/logs/fasttree.log"
-    shell: "FastTree -nt -gamma -spr 4 -log {log} -quiet {input} > {output}"
-
-
-rule newick_tree_unfiltered:
-    input: "results/{eid}/{pid}/OTU_unfiltered_aligned.fasta"
-    output: "results/{eid}/{pid}/OTU_unfiltered.tree"
     message: "Building tree from aligned OTU sequences with FastTree2"
     log: "results/{eid}/{pid}/logs/fasttree.log"
     shell: "FastTree -nt -gamma -spr 4 -log {log} -quiet {input} > {output}"
