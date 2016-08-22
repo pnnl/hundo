@@ -2,17 +2,32 @@
 
 # Install
 
-+ snakemake
-+ biom-format
-+ usearch
-+ clustalo
-+ fasttree
++ snakemake - `pip install snakemake`
++ biom-format - `pip install biom-format`
++ usearch - `module load usearch`
++ clustalo - `module use /people/brow015/modulefiles && module load cbb/clustalo/1.2.0`
++ fasttree - `conda install -c bioconda fasttree`
 
 
 # Usage
 
 Place demultiplexed, uncompressed reads into `results/<EXPERIMENT NAME>/demux`
 with a `.fastq` file extension.
+
+Uncompress the BLAST database and taxonomy file:
+
+```
+cd ref/silva_123
+sh extract.sh
+gunzip SLV_123_SSU.tax.gz
+```
+
+Build `lca`:
+
+```
+cd resources/lca_src
+make
+```
 
 To run the workflow across 24 cores:
 
