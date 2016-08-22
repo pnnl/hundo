@@ -14,6 +14,11 @@ chimera_database:
     # used to build report
     metadata: 'RDP Gold reference database version 9'
     citation: "Cole, J. R., Q. Wang, J. A. Fish, B. Chai, D. M. McGarrell, Y. Sun, C. T. Brown, A. Porras-Alfaro, C. R. Kuske, and J. M. Tiedje. 2014. Ribosomal Database Project: data and tools for high throughput rRNA analysis Nucl. Acids Res. 42(Database issue):D633-D642; doi: 10.1093/nar/gkt1244 [PMID: 24288368]"
+blast_database:
+    fasta: ref/silva_123/SLV_123_SSU.fasta
+    taxonomy: ref/silva_123/SLV_123_SSU.tax
+    metadata: 'SILVA database version 123 clustered at 99%'
+    citation: "Quast C, Pruesse E, Yilmaz P, Gerken J, Schweer T, Yarza P, Peplies J, Glöckner FO. 2013. The SILVA ribosomal RNA gene database project: improved data processing and web-based tools. Nucl. Acids Res. 41 (D1): D590-D596"
 merging:
     # minimum passing read length after merging
     minimum_merge_length: 175
@@ -38,6 +43,9 @@ taxonomy:
     # OTU sequences are predicted at each phylogenetic level up to the point
     # where confidence dips below this threshold
     prediction_confidence_cutoff: 0.8
+    # comma separated list of min % identity to accept a database hit at a
+    # taxonomic level; Species to Kingdom
+    lca_cutoffs: 97,95,93,91,88,78,0
 mapping_to_otus:
     # reflects the difference between OTU clusters to reduce ambiguous assignment
     read_identity_requirement: 0.97
