@@ -104,7 +104,7 @@ rule make_uchime_database:
 
 rule make_blast_db:
     input: config['blast_database']['fasta']
-    output: expand(os.path.splitext(config['blast_database']['fasta'])[0] + "{idx}", idx=['nhr', 'nin', 'nsq'])
+    output: expand(config['blast_database']['fasta'] + ".{idx}", idx=['nhr', 'nin', 'nsq'])
     message: "Formatting BLAST database"
     shell: "makeblastdb -in {input} -dbtype nucl"
 
@@ -204,7 +204,7 @@ rule fastq_filter:
 
 
 rule dereplicate_sequences:
-    input: "results/{eid}/merged_%f.fasta" % config['filtering']['maximum_expected_error']
+    input: rules.fastq_filter.output
     output: temp("results/{eid}/uniques.fasta")
     version: USEARCH_VERSION
     message: "Dereplicating with USEARCH"
@@ -213,7 +213,7 @@ rule dereplicate_sequences:
 
 rule cluster_sequences:
     input: "results/{eid}/uniques.fasta"
-    output: "results/{eid}/{pid}/OTU_unfiltered.fasta"
+    output: temp("results/{eid}/{pid}/OTU_unfiltered.fasta")
     version: USEARCH_VERSION
     message: "Clustering sequences with USEARCH where OTUs have a minimum size of {params.minsize} and where the maximum difference between an OTU member sequence and the representative sequence of that OTU is {params.otu_radius_pct}%"
     params:
@@ -228,7 +228,7 @@ rule cluster_sequences:
 
 rule remove_chimeric_otus:
     input:
-        fasta = "results/{eid}/{pid}/OTU_unfiltered.fasta",
+        fasta = rules.cluster_sequences.output,
         reference = rules.make_uchime_database.output
     output: "results/{eid}/{pid}/OTU.fasta"
     version: USEARCH_VERSION
@@ -243,7 +243,7 @@ rule remove_chimeric_otus:
 
 rule utax:
     input:
-        fasta = "results/{eid}/{pid}/OTU.fasta",
+        fasta = rules.remove_chimeric_otus.output,
         db = rules.make_tax_database.output
     output:
         fasta = temp("results/{eid}/{pid}/utax/OTU_tax_utax.fasta"),
@@ -324,22 +324,21 @@ rule assignments_from_lca:
         "results/{eid}/{pid}/OTU_tax.fasta"
     run:
         lca_results = {}
-        tax_levels = 'kpcofgs'
-        with open(input.tsv) as fh:
+        with open(input.tsv[0]) as fh:
             for line in fh:
                 line = line.strip().split("\t")
                 # file has a header, but doesn't matter
                 tax = []
-                for i, tl in enumerate(taxlevels):
+                for i, level in enumerate('kpcofgs'):
                     try:
-                        tax.append("%s__%s" % (tl, line[i + 1]))
+                        tax.append("%s__%s" % (level, line[i + 1]))
                     except IndexError:
                         # ensure unassigned
                         for t in line[1:]:
-                            assert t == "?":
-                        tax.append("%s__?" % tl)
+                            assert t == "?"
+                        tax.append("%s__?" % level)
                 lca_results[line[0]] = tax
-        with open(fasta) as fasta_file, open(out, "w") as outfile:
+        with open(input.fasta[0]) as fasta_file, open(str(output), "w") as outfile:
             for line in fasta_file:
                 line = line.strip()
                 if not line.startswith(">"):
@@ -410,7 +409,7 @@ rule newick_tree:
 rule report:
     input:
         file1 = "results/{eid}/{pid}/OTU.biom",
-        file2 = "results/{eid}/{pid}/OTU_tax.fasta",
+        file2 = "results/{eid}/{pid}/OTU.fasta",
         file3 = "results/{eid}/{pid}/OTU.tree",
         raw_counts = expand("results/{eid}/logs/{sample}_R1.fastq.count", eid=EID, sample=SAMPLES),
         filtered_counts = expand("results/{eid}/logs/{sample}_filtered_R1.fastq.count", eid=EID, sample=SAMPLES),
@@ -619,21 +618,14 @@ rule report:
         .. csv-table::
             :file: {sample_summary_csv}
 
-        OTU Table
-        *********
-
-        Tab delimited table of OTU and abundance per sample (file2_). The final column is the
-        taxonomy assignment of the given OTU.
-
-        Taxonomy was assigned to the OTU sequences at a cutoff of {params.tax_cutoff}%. The
-        confidence values can be observed within attached file4_.
+        Taxonomy was assigned to the OTU sequences at a cutoff of {params.tax_cutoff}%.
 
         Taxonomy database - {params.tax_metadata}
 
         OTU Sequences
         *************
 
-        The OTU sequences in FASTA format (file3_) and aligned as newick tree (file5_).
+        The OTU sequences in FASTA format (file2_) and aligned as newick tree (file3_).
 
         To build the tree, sequences were aligned using Clustalo [1] and
         FastTree2 [2] was used to generate the phylogenetic tree.
@@ -671,5 +663,4 @@ rule report:
         8. {params.chimera_citation}
 
         """, output.html, metadata="Author: Joe Brown (joe.brown@pnnl.gov)",
-        stylesheet=input.css, file1=input.file1, file2=input.file2, file3=input.file3,
-        file4=input.file4, file5=input.file5)
+        stylesheet=input.css, file1=input.file1, file2=input.file2, file3=input.file3)
