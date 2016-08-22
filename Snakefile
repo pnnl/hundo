@@ -57,7 +57,7 @@ def fix_fasta_tax_entry(tax, kingdom="?"):
 
 # snakemake -s snakefile --configfile its.config.yaml
 # configfile: "16s.config.yaml"
-ruleorder: cluster_sequences > remove_chimeric_otus > utax > utax_unfiltered > fix_utax_taxonomy > fix_utax_taxonomy_unfiltered > compile_counts > compile_counts_unfiltered > biom > biom_unfiltered > multiple_align > multiple_align_unfiltered > newick_tree > newick_tree_unfiltered
+# ruleorder: fix_utax_taxonomy > fix_utax_taxonomy_unfiltered > compile_counts > compile_counts_unfiltered > biom > biom_unfiltered > multiple_align > multiple_align_unfiltered > newick_tree > newick_tree_unfiltered
 USEARCH_VERSION = check_output("usearch --version", shell=True).strip()
 CLUSTALO_VERSION = check_output("clustalo --version", shell=True).strip()
 EID = config['eid']
@@ -74,14 +74,9 @@ rule all:
         expand("results/{eid}/logs/{sample}_R1.fastq.count", eid=EID, sample=SAMPLES),
         expand("results/{eid}/logs/{sample}_filtered_R1.fastq.count", eid=EID, sample=SAMPLES),
         expand("results/{eid}/logs/{sample}_merged.fastq.count", eid=EID, sample=SAMPLES),
-        expand("results/{eid}/{pid}/OTU.txt", eid=EID, pid=CLUSTER_THRESHOLD),
         expand("results/{eid}/{pid}/OTU.biom", eid=EID, pid=CLUSTER_THRESHOLD),
-        expand("results/{eid}/{pid}/OTU_tax.txt", eid=EID, pid=CLUSTER_THRESHOLD),
         expand("results/{eid}/{pid}/OTU.tree", eid=EID, pid=CLUSTER_THRESHOLD),
-        expand("results/{eid}/{pid}/OTU_unfiltered.txt", eid=EID, pid=CLUSTER_THRESHOLD),
-        expand("results/{eid}/{pid}/OTU_unfiltered.biom", eid=EID, pid=CLUSTER_THRESHOLD),
-        expand("results/{eid}/{pid}/OTU_unfiltered_tax.txt", eid=EID, pid=CLUSTER_THRESHOLD),
-        expand("results/{eid}/{pid}/OTU_unfiltered.tree", eid=EID, pid=CLUSTER_THRESHOLD),
+        expand("results/{eid}/{pid}/utax/OTU.biom", eid=EID, pid=CLUSTER_THRESHOLD),
         expand("results/{eid}/{pid}/README.html", eid=EID, pid=CLUSTER_THRESHOLD)
 
 
@@ -105,6 +100,13 @@ rule make_uchime_database:
     version: USEARCH_VERSION
     message: "Creating chimera reference index based on {input}"
     shell: "usearch -makeudb_usearch {input} -output {output}"
+
+
+rule make_blast_db:
+    input: config['blast_database']['fasta']
+    output: expand(os.path.splitext(config['blast_database']['fasta'])[0] + "{idx}", idx=['nhr', 'nin', 'nsq'])
+    message: "Formatting BLAST database"
+    shell: "makeblastdb -in {input} -dbtype nucl"
 
 
 rule count_raw_reads:
@@ -231,7 +233,7 @@ rule remove_chimeric_otus:
     output: "results/{eid}/{pid}/OTU.fasta"
     version: USEARCH_VERSION
     message: "Chimera filtering OTU seed sequences against %s" % config['chimera_database']['metadata']
-    threads: 11
+    threads: 22
     log: "results/{eid}/{pid}/logs/uchime_ref.log"
     shell:
         '''usearch -uchime_ref {input.fasta} -db {input.reference} -nonchimeras	{output} \
@@ -244,13 +246,13 @@ rule utax:
         fasta = "results/{eid}/{pid}/OTU.fasta",
         db = rules.make_tax_database.output
     output:
-        fasta = temp("results/{eid}/{pid}/OTU_tax_utax.fasta"),
-        txt = temp("results/{eid}/{pid}/OTU_tax_tax.txt")
+        fasta = temp("results/{eid}/{pid}/utax/OTU_tax_utax.fasta"),
+        txt = temp("results/{eid}/{pid}/utax/OTU_tax_tax.txt")
     version: USEARCH_VERSION
     message: "Assigning taxonomies with UTAX algorithm using USEARCH with a confidence cutoff of {params.utax_cutoff}"
     params:
         utax_cutoff = config['taxonomy']['prediction_confidence_cutoff']
-    threads: 11
+    threads: 22
     log: "results/{eid}/{pid}/logs/utax.log"
     shell:
         '''
@@ -265,8 +267,8 @@ rule fix_utax_taxonomy:
         fasta = rules.utax.output.fasta,
         txt = rules.utax.output.txt
     output:
-        fasta = "results/{eid}/{pid}/rdp/OTU_tax.fasta",
-        txt = "results/{eid}/{pid}/rdp/OTU_tax.txt"
+        fasta = "results/{eid}/{pid}/utax/OTU_tax.fasta",
+        txt = "results/{eid}/{pid}/utax/OTU_tax.txt"
     params:
         kingdom = config['kingdom']
     message: "Altering taxa to reflect QIIME style annotation"
@@ -284,52 +286,117 @@ rule fix_utax_taxonomy:
                 print(toks[0], fix_tax_entry(toks[1], params.kingdom),
                       fix_tax_entry(toks[2], params.kingdom), toks[3], sep="\t", file=ofh)
 
-# makeblastdb -in ~/Downloads/lotus_pipeline/DB/SLV_123_SSU.fasta -dbtype nucl
-# blastn -query OTU.fasta -db ~/Downloads/lotus_pipeline/DB/SLV_123_SSU.fasta -num_alignments 200 -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore" -out airfilter_blastn.tab -num_threads 8
+
+rule blast:
+    input:
+        fasta = rules.remove_chimeric_otus.output,
+        db = rules.make_blast_db.output
+    output:
+        "results/{eid}/{pid}/blast/blast_hits.txt"
+    params:
+        P = config['taxonomy']['lca_cutoffs'],
+        L = config['taxonomy']['prediction_confidence_cutoff'],
+        db = config['blast_database']['fasta']
+    threads: 22
+    shell:
+        '''
+        blastn -query {input.fasta} -db {params.db} -num_alignments 200 \
+            -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore" \
+            -out {output} -num_threads {threads}
+        '''
+
+
+rule lca:
+    input: rules.blast.output
+    output: "results/{eid}/{pid}/blast/lca_assignments.txt"
+    params:
+        tax = config['blast_database']['taxonomy'],
+        P = config['taxonomy']['lca_cutoffs'],
+        L = config['taxonomy']['prediction_confidence_cutoff']
+    shell: "resources/lca_src/lca -L {params.L} -P {params.P} -i {input} -r {params.tax} -o {output}"
+
+
+rule assignments_from_lca:
+    input:
+        tsv = rules.lca.output,
+        fasta = rules.remove_chimeric_otus.output
+    output:
+        "results/{eid}/{pid}/OTU_tax.fasta"
+    run:
+        lca_results = {}
+        tax_levels = 'kpcofgs'
+        with open(input.tsv) as fh:
+            for line in fh:
+                line = line.strip().split("\t")
+                # file has a header, but doesn't matter
+                tax = []
+                for i, tl in enumerate(taxlevels):
+                    try:
+                        tax.append("%s__%s" % (tl, line[i + 1]))
+                    except IndexError:
+                        # ensure unassigned
+                        for t in line[1:]:
+                            assert t == "?":
+                        tax.append("%s__?" % tl)
+                lca_results[line[0]] = tax
+        with open(fasta) as fasta_file, open(out, "w") as outfile:
+            for line in fasta_file:
+                line = line.strip()
+                if not line.startswith(">"):
+                    print(line, file=outfile)
+                else:
+                    try:
+                        print(">%s;tax=%s" % (line[1:], ",".join(lca_results[line[1:]])), file=outfile)
+                    except KeyError:
+                        print(">%s;tax=k__?,p__?,c__?,o__?,f__?,g__?,s__?" % line[1:], file=outfile)
 
 
 rule compile_counts:
     input:
-        fastq = "results/{eid}/merged.fastq",
-        db = "results/{eid}/{pid}/OTU_tax.fasta",
+        fastq = rules.combine_merged_reads.output,
+        utax_db = rules.fix_utax_taxonomy.output.fasta,
+        lca_db = rules.assignments_from_lca.output
     output:
-        txt = "results/{eid}/{pid}/OTU.txt",
+        utax_txt = "results/{eid}/{pid}/utax/OTU.txt",
+        lca_txt = "results/{eid}/{pid}/OTU.txt"
     params:
         threshold = config['mapping_to_otus']['read_identity_requirement']
-    threads: 11
+    threads: 22
     shell:
         '''
-        usearch -usearch_global {input.fastq} -db {input.db} -strand plus \
-            -id {params.threshold} -otutabout {output.txt} \
+        usearch -usearch_global {input.fastq} -db {input.utax_db} -strand plus \
+            -id {params.threshold} -otutabout {output.utax_txt} \
+            -threads {threads}
+        usearch -usearch_global {input.fastq} -db {input.lca_db} -strand plus \
+            -id {params.threshold} -otutabout {output.lca_txt} \
             -threads {threads}
         '''
 
 
 rule biom:
     input:
-        "results/{eid}/{pid}/OTU.txt"
+        utax_txt = rules.compile_counts.output.utax_txt,
+        lca_txt = rules.compile_counts.output.lca_txt
     output:
-        "results/{eid}/{pid}/OTU.biom"
+        utax_biom = "results/{eid}/{pid}/utax/OTU.biom",
+        lca_biom = "results/{eid}/{pid}/OTU.biom"
+    shadow: "shallow"
     shell:
         '''
-        sed 's|\"||g' {input} | sed 's|\,|\;|g' > results/{wildcards.eid}/{wildcards.pid}/OTU_converted.txt
-        biom convert -i results/{wildcards.eid}/{wildcards.pid}/OTU_converted.txt \
-            -o {output} --to-json \
-            --process-obs-metadata sc_separated --table-type "OTU table"
+        sed 's|\"||g' {input.utax_txt} | sed 's|\,|\;|g' > OTU_converted.txt
+        biom convert -i OTU_converted.txt -o {output.utax_biom} --to-json --process-obs-metadata sc_separated --table-type "OTU table"
+        sed 's|\"||g' {input.lca_txt} | sed 's|\,|\;|g' > OTU_converted.txt
+        biom convert -i OTU_converted.txt -o {output.lca_biom} --to-json --process-obs-metadata sc_separated --table-type "OTU table"
         '''
 
 
 rule multiple_align:
-    input: "results/{eid}/{pid}/OTU.fasta"
+    input: rules.remove_chimeric_otus.output
     output: "results/{eid}/{pid}/OTU_aligned.fasta"
     message: "Multiple alignment of samples using Clustal Omega"
     version: CLUSTALO_VERSION
-    threads: 8
-    shell:
-        '''
-        /people/brow015/apps/cbb/clustalo/1.2.0/clustalo -i {input} -o {output} \
-            --outfmt=fasta --threads {threads} --force
-        '''
+    threads: 1
+    shell: "clustalo -i {input} -o {output} --outfmt=fasta --threads {threads} --force"
 
 
 rule newick_tree:
@@ -343,10 +410,8 @@ rule newick_tree:
 rule report:
     input:
         file1 = "results/{eid}/{pid}/OTU.biom",
-        file2 = "results/{eid}/{pid}/OTU.txt",
-        file3 = "results/{eid}/{pid}/OTU_tax.fasta",
-        file4 = "results/{eid}/{pid}/OTU_tax.txt",
-        file5 = "results/{eid}/{pid}/OTU.tree",
+        file2 = "results/{eid}/{pid}/OTU_tax.fasta",
+        file3 = "results/{eid}/{pid}/OTU.tree",
         raw_counts = expand("results/{eid}/logs/{sample}_R1.fastq.count", eid=EID, sample=SAMPLES),
         filtered_counts = expand("results/{eid}/logs/{sample}_filtered_R1.fastq.count", eid=EID, sample=SAMPLES),
         merged_counts = expand("results/{eid}/logs/{sample}_merged.fastq.count", eid=EID, sample=SAMPLES),
