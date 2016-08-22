@@ -71,10 +71,7 @@ options::options(int argc, char **argv,int defDep):
 
 	}
 
-	if (hitRD) {//needs to add 1 extra entry to some vectors
-		/*taxDepth++;
-		idThr.resize(taxDepth, 0);
-		Taxlvls.resize(taxDepth,"Read")/*/
+	if (hitRD) {
 	}
 	split(blastres, ',', blFiles);
 	split(RefTaxFile, ',', refDBs);
