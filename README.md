@@ -1,4 +1,4 @@
-![dag](resources/dag.png)
+<img src="resources/dag.png" height="500"/>
 
 # Install
 
