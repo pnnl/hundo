@@ -55,9 +55,6 @@ def fix_fasta_tax_entry(tax, kingdom="?"):
     return "%s;tax=%s;" % (toks[0], new_tax)
 
 
-# snakemake -s snakefile --configfile its.config.yaml
-# configfile: "16s.config.yaml"
-# ruleorder: fix_utax_taxonomy > fix_utax_taxonomy_unfiltered > compile_counts > compile_counts_unfiltered > biom > biom_unfiltered > multiple_align > multiple_align_unfiltered > newick_tree > newick_tree_unfiltered
 USEARCH_VERSION = check_output("usearch --version", shell=True).strip()
 CLUSTALO_VERSION = check_output("clustalo --version", shell=True).strip()
 EID = config['eid']
@@ -423,9 +420,10 @@ rule report:
         min_merge_len = config['merging']['minimum_merge_length'],
         max_ee = config['filtering']['maximum_expected_error'],
         tax_cutoff = config['taxonomy']['prediction_confidence_cutoff'],
+        tax_levels = config['taxonomy']['lca_cutoffs']
         min_seq_abundance = config['clustering']['minimum_sequence_abundance'],
-        tax_metadata = config['taxonomy_database']['metadata'],
-        tax_citation = config['taxonomy_database']['citation'],
+        tax_metadata = config['blast_database']['metadata'],
+        tax_citation = config['blast_database']['citation'],
         chimera_metadata = config['chimera_database']['metadata'],
         chimera_citation = config['chimera_database']['citation'],
         samples = SAMPLES
@@ -597,9 +595,6 @@ rule report:
         Output
         ------
 
-        These files fall downstream of reference-based chimera removal. Non-chimera removed OTU
-        data is also available in the results directory.
-
         Chimera Removal
         ***************
 
@@ -618,17 +613,19 @@ rule report:
         .. csv-table::
             :file: {sample_summary_csv}
 
-        Taxonomy was assigned to the OTU sequences at a cutoff of {params.tax_cutoff}%.
+        Taxonomy was assigned to the OTU sequences at an overall cutoff of {params.tax_cutoff}%
+        and per taxonomic level from Species to Kingdom at: {params.tax_levels}.
 
         Taxonomy database - {params.tax_metadata}
 
         OTU Sequences
         *************
 
-        The OTU sequences in FASTA format (file2_) and aligned as newick tree (file3_).
+        The OTU sequences are available in FASTA format (file2_) and aligned as newick tree
+        (file3_).
 
-        To build the tree, sequences were aligned using Clustalo [1] and
-        FastTree2 [2] was used to generate the phylogenetic tree.
+        To build the tree, sequences were aligned using Clustalo [1] and FastTree2 [2] was used
+        to generate the phylogenetic tree.
 
 
         Methods
@@ -644,10 +641,9 @@ rule report:
         using the distance-based, greedy clustering method of USEARCH [6] at
         {wildcards.pid}% pairwise sequence identity among operational taxonomic unit (OTU) member
         sequences. De novo prediction of chimeric sequences was performed using USEARCH during
-        clustering. Taxonomy was assigned to OTU sequences at a minimum identity cutoff fraction of
-        {params.tax_cutoff} using the global alignment method implemented in USEARCH across
-        {params.tax_metadata} [7]. OTU seed sequences were filtered against {params.chimera_metadata}
-        [8] to identify chimeric OTUs using USEARCH.
+        clustering. Taxonomy was assigned to OTU sequences using BLAST [7] alignments followed by
+        least common ancestor assignments across {params.tax_metadata} [8]. OTU seed sequences were
+        filtered against {params.chimera_metadata} [9] to identify chimeric OTUs using USEARCH.
 
 
         References
@@ -659,8 +655,9 @@ rule report:
         4. Bushnell, B. (2014). BBMap: A Fast, Accurate, Splice-Aware Aligner. URL https://sourceforge.net/projects/bbmap/
         5. Edgar, RC (2010). Search and clustering orders of magnitude faster than BLAST, Bioinformatics 26(19), 2460-2461. doi: 10.1093/bioinformatics/btq461
         6. Edgar, RC (2013). UPARSE: highly accurate OTU sequences from microbial amplicon reads. Nat Methods.
-        7. {params.tax_citation}
-        8. {params.chimera_citation}
+        7. Camacho C., Coulouris G., Avagyan V., Ma N., Papadopoulos J., Bealer K., & Madden T.L. (2008) "BLAST+: architecture and applications." BMC Bioinformatics 10:421.
+        8. {params.tax_citation}
+        9. {params.chimera_citation}
 
         """, output.html, metadata="Author: Joe Brown (joe.brown@pnnl.gov)",
         stylesheet=input.css, file1=input.file1, file2=input.file2, file3=input.file3)
