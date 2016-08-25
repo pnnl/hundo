@@ -120,7 +120,7 @@ def launch_jobs(files, eid):
         logging.info("Submitting demultiplexing job for run %s" % runid)
         cmd = "sbatch {script} {runid} {eid}".format(script=DEMUXSH, runid=runid, eid=eid)
         check_call(cmd, shell=True)
-448
+
 
 def main(metadata, eid, amplicon, barcode_length, output_dir):
     metadf = pd.read_excel(metadata)
