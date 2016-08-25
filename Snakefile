@@ -420,7 +420,7 @@ rule report:
         min_merge_len = config['merging']['minimum_merge_length'],
         max_ee = config['filtering']['maximum_expected_error'],
         tax_cutoff = config['taxonomy']['prediction_confidence_cutoff'],
-        tax_levels = config['taxonomy']['lca_cutoffs']
+        tax_levels = config['taxonomy']['lca_cutoffs'],
         min_seq_abundance = config['clustering']['minimum_sequence_abundance'],
         tax_metadata = config['blast_database']['metadata'],
         tax_citation = config['blast_database']['citation'],
