@@ -18,5 +18,6 @@ Alternatively,
 sbatch run.sh bottos-its its.config.yaml
 usage
 
+cd /pic/projects/mint/hundo
 config=${2:-"resources/16s.config.yaml"}
 snakemake -j 24 --configfile $config --config eid=$1
