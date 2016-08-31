@@ -10,12 +10,20 @@ from snakemake.utils import report
 from subprocess import check_output
 
 
+def read_count(fastq):
+    return int(subprocess.check_output("awk '{n++}END{print n/4}' " + fastq, shell=True).decode())
+
+
 def get_samples(eid):
     samples = set()
+    omitted = set()
     for f in os.listdir(os.path.join("results", eid, "demux")):
         if f.endswith("fastq") or f.endswith("fq"):
-            samples.add(f.partition(".")[0].partition("_")[0])
-    return samples
+            if read_count(f) > 1000:
+                samples.add(f.partition(".")[0].partition("_")[0])
+            else:
+                omitted.add(f.partition(".")[0].partition("_")[0])
+    return samples, omitted
 
 
 def fix_tax_entry(tax, kingdom="?"):
@@ -43,7 +51,7 @@ def fix_fasta_tax_entry(tax, kingdom="?"):
     """
     >>> t = ">OTU_7;tax=p:Basidiomycota,c:Microbotryomycetes,o:Sporidiobolales,f:Sporidiobolales_fam_Incertae_sedis,g:Rhodotorula;"
     >>> fix_fasta_tax_entry(t)
-    '>OTU_7;tax=k__,p__Basidiomycota,c__Microbotryomycetes,o__Sporidiobolales,f__Sporidiobolales_fam_Incertae_sedis,g__Rhodotorula,s__?;'
+    '>OTU_7;tax=k__?,p__Basidiomycota,c__Microbotryomycetes,o__Sporidiobolales,f__Sporidiobolales_fam_Incertae_sedis,g__Rhodotorula,s__?;'
     """
     toks = tax.split(";")
     otu = toks[0]
@@ -58,7 +66,7 @@ def fix_fasta_tax_entry(tax, kingdom="?"):
 USEARCH_VERSION = check_output("usearch --version", shell=True).strip()
 CLUSTALO_VERSION = check_output("clustalo --version", shell=True).strip()
 EID = config['eid']
-SAMPLES = get_samples(EID)
+SAMPLES, OMITTED = get_samples(EID)
 # name output folder appropriately
 CLUSTER_THRESHOLD = 100 - config['clustering']['percent_of_allowable_difference']
 
