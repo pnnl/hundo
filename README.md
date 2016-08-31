@@ -7,6 +7,8 @@
 + usearch - `module load usearch`
 + clustalo - `module use /people/brow015/modulefiles && module load cbb/clustalo/1.2.0`
 + fasttree - `conda install -c bioconda fasttree`
++ bbtools - `conda install -c bioconda bbmap`
++ blast
 
 
 # Usage
