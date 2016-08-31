@@ -13,6 +13,11 @@ chimera_database:
     fasta: ref/chimera/uchime_reference_dataset_01.01.2016.fasta
     metadata: 'Unite UCHIME reference database version 01.01.2016'
     citation: "Nilsson et al. 2015. A comprehensive, automatically updated fungal ITS sequence dataset for reference-based chimera control in environmental sequencing efforts. Microbes and Environments."
+blast_database:
+    fasta: ref/unite_v7/blast/unite_7.fasta
+    taxonomy: ref/unite_v7/blast/unite_7.tax
+    metadata: 'Unite version 7 database trained on the ITS2 region'
+    citation: "Koljalg, Urmas, et al. Towards a unified paradigm for sequence-based identification of fungi. Molecular Ecology 22.21 (2013): 5271-5277."
 merging:
     # minimum passing read length after merging
     minimum_merge_length: 175
