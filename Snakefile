@@ -17,9 +17,10 @@ def read_count(fastq):
 def get_samples(eid):
     samples = set()
     omitted = set()
-    for f in os.listdir(os.path.join("results", eid, "demux")):
+    input_dir = os.path.join("results", eid, "demux")
+    for f in os.listdir(input_dir):
         if f.endswith("fastq") or f.endswith("fq"):
-            if read_count(f) > 1000:
+            if read_count(os.path.join(input_dir, f)) > 1000:
                 samples.add(f.partition(".")[0].partition("_")[0])
             else:
                 omitted.add(f.partition(".")[0].partition("_")[0])
