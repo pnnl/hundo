@@ -147,7 +147,7 @@ rule quality_filter_reads:
         bbduk2.sh -Xmx8g in={input.r1} in2={input.r2} out={output.r1} out2={output.r2} \
             fref={params.adapters} stats={output.stats} hdist={params.hdist} k={params.k} \
             trimq={params.quality} qtrim={params.qtrim} threads={threads} ktrim={params.ktrim} \
-            minlength={params.minlength}
+            minlength={params.minlength} overwrite=true
         '''
 
 
