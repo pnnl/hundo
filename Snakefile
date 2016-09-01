@@ -11,7 +11,7 @@ from subprocess import check_output
 
 
 def read_count(fastq):
-    return int(subprocess.check_output("awk '{n++}END{print n/4}' " + fastq, shell=True).decode())
+    return int(check_output("awk '{n++}END{print n/4}' " + fastq, shell=True).decode())
 
 
 def get_samples(eid):
