@@ -42,6 +42,9 @@ taxonomy:
     # OTU sequences are predicted at each phylogenetic level up to the point
     # where confidence dips below this threshold
     prediction_confidence_cutoff: 0.8
+    # comma separated list of min % identity to accept a database hit at a
+    # taxonomic level; Species to Kingdom
+    lca_cutoffs: 97,95,93,91,88,78,0
 mapping_to_otus:
     # reflects the difference between OTU clusters to reduce ambiguous assignment
     read_identity_requirement: 0.97
