@@ -11,7 +11,16 @@ from subprocess import check_output
 
 
 def read_count(fastq):
-    return int(check_output("awk '{n++}END{print n/4}' " + fastq, shell=True).decode())
+    total = 0
+    count_file = fastq + '.count'
+    if os.path.exists(fastq) and os.path.getsize(fastq) > 100:
+        if not os.path.exists(count_file):
+            check_output("awk '{n++}END{print n/4}' %s > %s" (fastq, fastq + '.count') , shell=True)
+        with open(count_file) as fh:
+            for line in fh:
+                total = int(line.strip())
+                break
+    return total
 
 
 def get_samples(eid):
@@ -599,7 +608,7 @@ rule report:
 
         .. raw:: html
 
-            <div id="raw-count-plot" style="min-width: 310px; height: 400px; margin: 0 auto"></div>
+            <div id="raw-count-plot" style="min-width: 310px; height: 500px; margin: 0 auto"></div>
 
 
         Output
