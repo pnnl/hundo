@@ -433,6 +433,7 @@ rule report:
         min_seq_abundance = config['clustering']['minimum_sequence_abundance'],
         tax_metadata = config['blast_database']['metadata'],
         tax_citation = config['blast_database']['citation'],
+        alt_tax_metadata = config['taxonomy_database']['metadata'],
         chimera_metadata = config['chimera_database']['metadata'],
         chimera_citation = config['chimera_database']['citation'],
         samples = SAMPLES
@@ -667,6 +668,43 @@ rule report:
         7. Camacho C., Coulouris G., Avagyan V., Ma N., Papadopoulos J., Bealer K., & Madden T.L. (2008) "BLAST+: architecture and applications." BMC Bioinformatics 10:421.
         8. {params.tax_citation}
         9. {params.chimera_citation}
+
+
+        All Files
+        ---------
+
+        More files are available in relation to this analysis than are presented here. They can
+        be accessed from the results directory and are organized by your experiment ID
+        ({wildcards.eid})::
+
+            {wildcards.eid}/
+            ├── {wildcards.pid}                    # clustering pairwise identity threshold
+            │   ├── blast
+            │   │   ├── blast_hits.txt             # raw blast hits per OTU seed seq
+            │   │   └── lca_assignments.txt        # raw lca results TSV from blast hits
+            │   ├── logs                           # output from these applications
+            │   │   ├── fasttree.log
+            │   │   ├── uchime_ref.log
+            │   │   └── utax.log
+            │   ├── OTU_aligned.fasta              # multiple alignment file of otu seed seqs
+            │   ├── OTU.biom                       # tax annotated biom (no metadata, no normalization, SILVA v123)
+            │   ├── OTU.fasta                      # otu seqs
+            │   ├── OTU_tax.fasta                  # otu seqs with tax in FASTA header
+            │   ├── OTU.tree                       # newick tree of multiple alignment
+            │   ├── OTU.txt                        # tab delimited otu table
+            │   ├── README.html                    # results report
+            │   └── utax                           # utax results using {params.alt_tax_metadata}
+            │       ├── OTU.biom
+            │       ├── OTU_tax.fasta
+            │       ├── OTU_tax.txt
+            │       └── OTU.txt
+            ├── demux
+            │   └── *.fastq                        # all of the samples that were analyzed
+            ├── logs
+            │   ├── quality_filtering_stats.txt
+            │   └── *.counts
+            ├── merged_1.fasta                     # error corrected FASTA prior to clustering into OTU seqs
+            └── merged.fastq                       # all sample reads merged into single file with updated headers
 
         """, output.html, metadata="Author: Joe Brown (joe.brown@pnnl.gov)",
         stylesheet=input.css, file1=input.file1, file2=input.file2, file3=input.file3)
