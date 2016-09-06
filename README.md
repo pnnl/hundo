@@ -2,13 +2,20 @@
 
 # Install
 
-+ snakemake - `pip install snakemake`
-+ biom-format - `pip install biom-format`
-+ usearch - `module load usearch`
-+ clustalo - `module use /people/brow015/modulefiles && module load cbb/clustalo/1.2.0`
-+ fasttree - `conda install -c bioconda fasttree`
-+ bbtools - `conda install -c bioconda bbmap`
-+ blast
+Install `snakemake` and `biom-format` using `pip`:
+
+```
+pip install snakemake biom-format
+```
+
+Install `fasttree`, `bbmap`, and `blast` (this version is usually behind the
+current release) using Bioconda repository:
+
+```
+conda install -c bioconda fasttree bbmap blast
+```
+
+Download and install [usearch](http://www.drive5.com/usearch/download.html) and [clustalo](http://www.clustal.org/omega/#Download).
 
 
 # Usage
