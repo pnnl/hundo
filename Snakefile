@@ -15,7 +15,7 @@ def read_count(fastq):
     count_file = fastq + '.count'
     if os.path.exists(fastq) and os.path.getsize(fastq) > 100:
         if not os.path.exists(count_file):
-            check_output("awk '{n++}END{print n/4}' %s > %s" (fastq, fastq + '.count') , shell=True)
+            check_output("awk '{n++}END{print n/4}' %s > %s" % (fastq, fastq + '.count'), shell=True)
         with open(count_file) as fh:
             for line in fh:
                 total = int(line.strip())
@@ -28,7 +28,7 @@ def get_samples(eid):
     omitted = set()
     input_dir = os.path.join("results", eid, "demux")
     for f in os.listdir(input_dir):
-        if f.endswith("fastq") or f.endswith("fq"):
+        if (f.endswith("fastq") or f.endswith("fq")) and ("_r1" in f or "_R1" in f):
             if read_count(os.path.join(input_dir, f)) > 1000:
                 samples.add(f.partition(".")[0].partition("_")[0])
             else:
