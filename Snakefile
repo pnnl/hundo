@@ -184,11 +184,12 @@ rule merge_reads:
     message: "Merging paired-end reads with USEARCH at a minimum merge length of {params.minimum_merge_length}"
     params:
         minimum_merge_length = config['merging']['minimum_merge_length']
+    log: "results/{eid}/{pid}/logs/fastq_mergepairs.log"
     shell:
         '''
         usearch -fastq_mergepairs {input.r1} -relabel @ -sample {wildcards.sample} \
             -fastq_minmergelen {params.minimum_merge_length} \
-            -fastqout {output}
+            -fastqout {output} -log {log}
         '''
 
 
@@ -215,7 +216,8 @@ rule fastq_filter:
     message: "Filtering FASTQ with USEARCH with an expected maximum error rate of {params.maxee}"
     params:
         maxee = config['filtering']['maximum_expected_error']
-    shell: "usearch -fastq_filter {input} -fastq_maxee {params.maxee} -fastaout {output} -relabel Filt"
+    log: "results/{eid}/{pid}/logs/fastq_filter.log"
+    shell: "usearch -fastq_filter {input} -fastq_maxee {params.maxee} -fastaout {output} -relabel Filt -log {log}"
 
 
 rule dereplicate_sequences:
@@ -223,7 +225,9 @@ rule dereplicate_sequences:
     output: temp("results/{eid}/uniques.fasta")
     version: USEARCH_VERSION
     message: "Dereplicating with USEARCH"
-    shell: "usearch -derep_fulllength {input} -sizeout -relabel Uniq -fastaout {output}"
+    threads: 22
+    log: "results/{eid}/{pid}/logs/uniques.log"
+    shell: "usearch -fastx_uniques {input} -fastaout {output} -sizeout -threads {threads} -log {log}"
 
 
 rule cluster_sequences:
@@ -234,11 +238,18 @@ rule cluster_sequences:
     params:
         minsize = config['clustering']['minimum_sequence_abundance'],
         otu_radius_pct = config['clustering']['percent_of_allowable_difference']
+    logs: "results/{eid}/{pid}/logs/cluster_sequences.log"
     shell:
         '''
         usearch -cluster_otus {input} -minsize {params.minsize} -otus {output} -relabel OTU_ \
-            -otu_radius_pct {params.otu_radius_pct}
+            -otu_radius_pct {params.otu_radius_pct} -log {log}
         '''
+
+
+# cluster
+# -cluster_otus $out/uniques.fa -minsize 2 -otus $out/otus.fa -relabel Otu -log $out/cluster_otus.log
+# followed by error correction
+# -unoise $out/uniques.fa -fastaout $out/denoised.fa -relabel Den -log $out/unoise.log -minampsize 4
 
 
 rule remove_chimeric_otus:
@@ -597,7 +608,7 @@ rule report:
             }});
             </script>
 
-        .. contents::
+        .. contents:: Contents
             :backlinks: none
 
         Summary
@@ -687,7 +698,7 @@ rule report:
         ({wildcards.eid})::
 
             {wildcards.eid}/
-            ├── {wildcards.pid}                    # clustering pairwise identity threshold
+            ├── {wildcards.pid}                                 # clustering pairwise identity threshold
             │   ├── blast
             │   │   ├── blast_hits.txt             # raw blast hits per OTU seed seq
             │   │   └── lca_assignments.txt        # raw lca results TSV from blast hits
