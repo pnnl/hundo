@@ -4,7 +4,7 @@
 #SBATCH --time=180
 #SBATCH --nodes=1
 #SBATCH --ntasks=24
-#SBATCH --job-name="otu-16s"
+#SBATCH --job-name="amplicons"
 #SBATCH --output="%A.out"
 #SBATCH --error="%A.err"
 
@@ -15,7 +15,7 @@ The default is to run with 16s configuration file.
 
 Alternatively,
 
-sbatch run.sh bottos-its its.config.yaml
+sbatch run.sh bottos-its resources/its.config.yaml
 usage
 
 cd /pic/projects/mint/hundo
