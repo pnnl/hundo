@@ -184,7 +184,7 @@ rule merge_reads:
     message: "Merging paired-end reads with USEARCH at a minimum merge length of {params.minimum_merge_length}"
     params:
         minimum_merge_length = config['merging']['minimum_merge_length']
-    log: "results/{eid}/{pid}/logs/fastq_mergepairs.log"
+    log: "results/{eid}/{pid}/logs/fastq_mergepairs.log".format(eid=EID, pid=CLUSTER_THRESHOLD)
     shell:
         '''
         usearch -fastq_mergepairs {input.r1} -relabel @ -sample {wildcards.sample} \
@@ -216,7 +216,7 @@ rule fastq_filter:
     message: "Filtering FASTQ with USEARCH with an expected maximum error rate of {params.maxee}"
     params:
         maxee = config['filtering']['maximum_expected_error']
-    log: "results/{eid}/{pid}/logs/fastq_filter.log"
+    log: "results/{eid}/{pid}/logs/fastq_filter.log".format(eid=EID, pid=CLUSTER_THRESHOLD)
     shell: "usearch -fastq_filter {input} -fastq_maxee {params.maxee} -fastaout {output} -relabel Filt -log {log}"
 
 
@@ -226,7 +226,7 @@ rule dereplicate_sequences:
     version: USEARCH_VERSION
     message: "Dereplicating with USEARCH"
     threads: 22
-    log: "results/{eid}/{pid}/logs/uniques.log"
+    log: "results/{eid}/{pid}/logs/uniques.log".format(eid=EID, pid=CLUSTER_THRESHOLD)
     shell: "usearch -fastx_uniques {input} -fastaout {output} -sizeout -threads {threads} -log {log}"
 
 
@@ -284,7 +284,7 @@ rule utax:
         '''
         usearch -utax {input.fasta} -db {input.db} -strand both -threads {threads} \
             -fastaout {output.fasta} -utax_cutoff {params.utax_cutoff} \
-            -utaxout {output.txt} 2> {log}
+            -utaxout {output.txt} -log {log}
         '''
 
 
