@@ -265,7 +265,7 @@ rule remove_chimeric_otus:
     threads: 22
     log: "results/{eid}/{pid}/logs/uchime_ref.log"
     shell:
-        '''usearch -uchime_ref {input.fasta} -db {input.reference} -notmatched {output.notmatched} \
+        '''usearch -uchime2_ref {input.fasta} -db {input.reference} -notmatched {output.notmatched} \
             -chimeras {output.chimeras} -strand plus -threads {threads} -mode {params.mode} -log {log}
         '''
 
