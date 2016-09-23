@@ -256,14 +256,17 @@ rule remove_chimeric_otus:
     input:
         fasta = rules.cluster_sequences.output,
         reference = rules.make_uchime_database.output
-    output: "results/{eid}/{pid}/OTU.fasta"
+    output:
+        notmatched = "results/{eid}/{pid}/OTU.fasta",
+        chimeras = "results/{eid}/{pid}/chimeras.fasta"
     version: USEARCH_VERSION
     message: "Chimera filtering OTU seed sequences against %s" % config['chimera_database']['metadata']
+    params: mode = config['filtering']['chimera_mode']
     threads: 22
     log: "results/{eid}/{pid}/logs/uchime_ref.log"
     shell:
-        '''usearch -uchime_ref {input.fasta} -db {input.reference} -nonchimeras	{output} \
-            -strand plus -threads {threads} 2> {log}
+        '''usearch -uchime_ref {input.fasta} -db {input.reference} -notmatched {output.notmatched} \
+            -chimeras {output.chimeras} -strand plus -threads {threads} -mode {params.mode} -log {log}
         '''
 
 
@@ -276,13 +279,11 @@ rule utax:
         txt = temp("results/{eid}/{pid}/utax/OTU_tax_tax.txt")
     version: USEARCH_VERSION
     message: "Assigning taxonomies with UTAX algorithm using USEARCH with a confidence cutoff of {params.utax_cutoff}"
-    params:
-        utax_cutoff = config['taxonomy']['prediction_confidence_cutoff']
+    params: utax_cutoff = config['taxonomy']['prediction_confidence_cutoff']
     threads: 22
     log: "results/{eid}/{pid}/logs/utax.log"
     shell:
-        '''
-        usearch -utax {input.fasta} -db {input.db} -strand both -threads {threads} \
+        '''usearch -utax {input.fasta} -db {input.db} -strand both -threads {threads} \
             -fastaout {output.fasta} -utax_cutoff {params.utax_cutoff} \
             -utaxout {output.txt} -log {log}
         '''
@@ -295,8 +296,7 @@ rule fix_utax_taxonomy:
     output:
         fasta = "results/{eid}/{pid}/utax/OTU_tax.fasta",
         txt = "results/{eid}/{pid}/utax/OTU_tax.txt"
-    params:
-        kingdom = config['kingdom']
+    params: kingdom = config['kingdom']
     message: "Altering taxa to reflect QIIME style annotation"
     run:
         with open(input.fasta) as ifh, open(output.fasta, 'w') as ofh:
@@ -317,16 +317,14 @@ rule blast:
     input:
         fasta = rules.remove_chimeric_otus.output,
         db = rules.make_blast_db.output
-    output:
-        "results/{eid}/{pid}/blast/blast_hits.txt"
+    output: "results/{eid}/{pid}/blast/blast_hits.txt"
     params:
         P = config['taxonomy']['lca_cutoffs'],
         L = config['taxonomy']['prediction_confidence_cutoff'],
         db = config['blast_database']['fasta']
     threads: 22
     shell:
-        '''
-        blastn -query {input.fasta} -db {params.db} -num_alignments 200 \
+        '''blastn -query {input.fasta} -db {params.db} -num_alignments 200 \
             -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore" \
             -out {output} -num_threads {threads}
         '''
@@ -346,8 +344,7 @@ rule assignments_from_lca:
     input:
         tsv = rules.lca.output,
         fasta = rules.remove_chimeric_otus.output
-    output:
-        "results/{eid}/{pid}/OTU_tax.fasta"
+    output: "results/{eid}/{pid}/OTU_tax.fasta"
     run:
         lca_results = {}
         with open(input.tsv[0]) as fh:
