@@ -35,6 +35,13 @@ filtering:
     minimum_passing_read_length: 51
     # after merging; the allowable limit of erroneous bases; accepts fractions as well
     maximum_expected_error: 1
+    # {denoised, high_confidence, specific, balanced, sensitive}
+    # denoised - reports all perfect chimeric models
+    # high_confidence - high confidence, high false negative rate
+    # specific - high confidence, high false-negative rate (just less so than high_confidence)
+    # balanced - balance false negatives and false positives to minimize the overall error rate on typical data
+    # sensitive - emphasizes high sensitivity at the expense of a high false positive rate
+    chimera_mode: balanced
 clustering:
     minimum_sequence_abundance: 2
     # maximum difference between an OTU member sequence and the representative sequence of that OTU
