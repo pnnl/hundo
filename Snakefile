@@ -272,7 +272,7 @@ rule remove_chimeric_otus:
 
 rule utax:
     input:
-        fasta = rules.remove_chimeric_otus.output,
+        fasta = rules.remove_chimeric_otus.output.notmatched,
         db = rules.make_tax_database.output
     output:
         fasta = temp("results/{eid}/{pid}/utax/OTU_tax_utax.fasta"),
@@ -315,7 +315,7 @@ rule fix_utax_taxonomy:
 
 rule blast:
     input:
-        fasta = rules.remove_chimeric_otus.output,
+        fasta = rules.remove_chimeric_otus.output.notmatched,
         db = rules.make_blast_db.output
     output: "results/{eid}/{pid}/blast/blast_hits.txt"
     params:
@@ -343,7 +343,7 @@ rule lca:
 rule assignments_from_lca:
     input:
         tsv = rules.lca.output,
-        fasta = rules.remove_chimeric_otus.output
+        fasta = rules.remove_chimeric_otus.output.notmatched
     output: "results/{eid}/{pid}/OTU_tax.fasta"
     run:
         lca_results = {}
@@ -413,7 +413,7 @@ rule biom:
 
 
 rule multiple_align:
-    input: rules.remove_chimeric_otus.output
+    input: rules.remove_chimeric_otus.output.notmatched
     output: "results/{eid}/{pid}/OTU_aligned.fasta"
     message: "Multiple alignment of samples using Clustal Omega"
     version: CLUSTALO_VERSION
