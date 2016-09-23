@@ -238,7 +238,7 @@ rule cluster_sequences:
     params:
         minsize = config['clustering']['minimum_sequence_abundance'],
         otu_radius_pct = config['clustering']['percent_of_allowable_difference']
-    logs: "results/{eid}/{pid}/logs/cluster_sequences.log"
+    log: "results/{eid}/{pid}/logs/cluster_sequences.log"
     shell:
         '''
         usearch -cluster_otus {input} -minsize {params.minsize} -otus {output} -relabel OTU_ \
