@@ -361,16 +361,16 @@ rule assignments_from_lca:
                             assert t == "?"
                         tax.append("%s__?" % level)
                 lca_results[line[0]] = tax
-        with open(input.fasta[0]) as fasta_file, open(output[0], "w") as outfile:
-            for line in fasta_file:
-                line = line.strip()
-                if not line.startswith(">"):
-                    print(line, file=outfile)
-                else:
-                    try:
-                        print(">%s;tax=%s" % (line[1:], ",".join(lca_results[line[1:]])), file=outfile)
-                    except KeyError:
-                        print(">%s;tax=k__?,p__?,c__?,o__?,f__?,g__?,s__?" % line[1:], file=outfile)
+        with open(input.fasta) as fasta_file, open(output[0], "w") as outfile:
+                for line in fasta_file:
+                    line = line.strip()
+                    if not line.startswith(">"):
+                        print(line, file=outfile)
+                    else:
+                        try:
+                            print(">%s;tax=%s" % (line[1:], ",".join(lca_results[line[1:]])), file=outfile)
+                        except KeyError:
+                            print(">%s;tax=k__?,p__?,c__?,o__?,f__?,g__?,s__?" % line[1:], file=outfile)
 
 
 rule compile_counts:
