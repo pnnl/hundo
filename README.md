@@ -1,5 +1,10 @@
 <img src="resources/dag.png" height="500"/>
 
+# TODO
+
++ ITS chimera reference to unite
++ report should show OTUs before and after chimera filtering
+
 # Install
 
 Install `snakemake` and `biom-format` using `pip`:
