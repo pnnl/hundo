@@ -361,7 +361,7 @@ rule assignments_from_lca:
                             assert t == "?"
                         tax.append("%s__?" % level)
                 lca_results[line[0]] = tax
-        with open(input.fasta[0]) as fasta_file, open(str(output), "w") as outfile:
+        with open(input.fasta[0]) as fasta_file, open(output[0], "w") as outfile:
             for line in fasta_file:
                 line = line.strip()
                 if not line.startswith(">"):
