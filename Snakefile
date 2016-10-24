@@ -99,14 +99,10 @@ rule make_tax_database:
     input:
         fasta = config['taxonomy_database']['fasta'],
         trained_parameters = config['taxonomy_database']['trained_parameters']
-    output:
-        os.path.splitext(config['taxonomy_database']['trained_parameters'])[0] + '.udb'
+    output: os.path.splitext(config['taxonomy_database']['trained_parameters'])[0] + '.udb'
     version: USEARCH_VERSION
     message: "Creating a UTAX database trained on {input.fasta} using {input.trained_parameters}"
-    shell:
-        '''
-        usearch -makeudb_utax {input.fasta} -taxconfsin {input.trained_parameters} -output {output}
-        '''
+    shell: "usearch -makeudb_utax {input.fasta} -taxconfsin {input.trained_parameters} -output {output}"
 
 
 rule make_uchime_database:
@@ -125,12 +121,9 @@ rule make_blast_db:
 
 
 rule count_raw_reads:
-    input:
-        "results/{eid}/demux/{sample}_R1.fastq"
-    output:
-        "results/{eid}/logs/{sample}_R1.fastq.count"
-    shell:
-        "awk '{{n++}}END{{print n/4}}' {input} > {output}"
+    input: "results/{eid}/demux/{sample}_R1.fastq"
+    output: "results/{eid}/logs/{sample}_R1.fastq.count"
+    shell: "awk '{{n++}}END{{print n/4}}' {input} > {output}"
 
 
 rule quality_filter_reads:
@@ -143,30 +136,27 @@ rule quality_filter_reads:
         stats = temp("results/{eid}/{sample}_quality_filtering_stats.txt")
     message: "Filtering reads using BBDuk2 to remove adapters and phiX with matching kmer length of {params.k} at a hamming distance of {params.hdist} and quality trim both ends to Q{params.quality}. Reads shorter than {params.minlength} were discarded."
     params:
-        adapters = config['filtering']['adapters'],
+        lref = config['filtering']['adapters'],
+        rref = config['filtering']['adapters'],
+        fref = config['filtering']['contaminants'],
+        mink = config['filtering']['mink'],
         quality = config['filtering']['minimum_base_quality'],
         hdist = config['filtering']['allowable_kmer_mismatches'],
         k = config['filtering']['reference_kmer_match_length'],
         qtrim = "rl",
-        ktrim = "l",
         minlength = config['filtering']['minimum_passing_read_length']
     threads: 4
-    shell:
-        '''
-        bbduk2.sh -Xmx8g in={input.r1} in2={input.r2} out={output.r1} out2={output.r2} \
-            fref={params.adapters} stats={output.stats} hdist={params.hdist} k={params.k} \
-            trimq={params.quality} qtrim={params.qtrim} threads={threads} ktrim={params.ktrim} \
-            minlength={params.minlength} overwrite=true
-        '''
+    shell: """bbduk2.sh -Xmx8g in={input.r1} in2={input.r2} out={output.r1} out2={output.r2} \
+                  rref={params.rref} lref={params.lref} fref={params.fref} mink={params.mink} \
+                  stats={output.stats} hdist={params.hdist} k={params.k} \
+                  trimq={params.quality} qtrim={params.qtrim} threads={threads} ktrim={params.ktrim} \
+                  minlength={params.minlength} overwrite=true"""
 
 
 rule count_filtered_reads:
-    input:
-        "results/{eid}/{sample}_filtered_R1.fastq"
-    output:
-        "results/{eid}/logs/{sample}_filtered_R1.fastq.count"
-    shell:
-        "awk '{{n++}}END{{print n/4}}' {input} > {output}"
+    input: "results/{eid}/{sample}_filtered_R1.fastq"
+    output: "results/{eid}/logs/{sample}_filtered_R1.fastq.count"
+    shell: "awk '{{n++}}END{{print n/4}}' {input} > {output}"
 
 
 rule combine_filtering_stats:
@@ -182,24 +172,17 @@ rule merge_reads:
     output: temp("results/{eid}/{sample}_merged.fastq")
     version: USEARCH_VERSION
     message: "Merging paired-end reads with USEARCH at a minimum merge length of {params.minimum_merge_length}"
-    params:
-        minimum_merge_length = config['merging']['minimum_merge_length']
+    params: minimum_merge_length = config['merging']['minimum_merge_length']
     log: "results/{eid}/{pid}/logs/fastq_mergepairs.log".format(eid=EID, pid=CLUSTER_THRESHOLD)
-    shell:
-        '''
-        usearch -fastq_mergepairs {input.r1} -relabel @ -sample {wildcards.sample} \
-            -fastq_minmergelen {params.minimum_merge_length} \
-            -fastqout {output} -log {log}
-        '''
+    shell: """usearch -fastq_mergepairs {input.r1} -relabel @ -sample {wildcards.sample} \
+                  -fastq_minmergelen {params.minimum_merge_length} \
+                  -fastqout {output} -log {log}"""
 
 
 rule count_joined_reads:
-    input:
-        "results/{eid}/{sample}_merged.fastq"
-    output:
-        "results/{eid}/logs/{sample}_merged.fastq.count"
-    shell:
-        "awk '{{n++}}END{{print n/4}}' {input} > {output}"
+    input: "results/{eid}/{sample}_merged.fastq"
+    output: "results/{eid}/logs/{sample}_merged.fastq.count"
+    shell: "awk '{{n++}}END{{print n/4}}' {input} > {output}"
 
 
 rule combine_merged_reads:
@@ -214,8 +197,7 @@ rule fastq_filter:
     output: "results/{eid}/merged_%s.fasta" % str(config['filtering']['maximum_expected_error'])
     version: USEARCH_VERSION
     message: "Filtering FASTQ with USEARCH with an expected maximum error rate of {params.maxee}"
-    params:
-        maxee = config['filtering']['maximum_expected_error']
+    params: maxee = config['filtering']['maximum_expected_error']
     log: "results/{eid}/{pid}/logs/fastq_filter.log".format(eid=EID, pid=CLUSTER_THRESHOLD)
     shell: "usearch -fastq_filter {input} -fastq_maxee {params.maxee} -fastaout {output} -relabel Filt -log {log}"
 
@@ -239,11 +221,8 @@ rule cluster_sequences:
         minsize = config['clustering']['minimum_sequence_abundance'],
         otu_radius_pct = config['clustering']['percent_of_allowable_difference']
     log: "results/{eid}/{pid}/logs/cluster_sequences.log"
-    shell:
-        '''
-        usearch -cluster_otus {input} -minsize {params.minsize} -otus {output} -relabel OTU_ \
-            -otu_radius_pct {params.otu_radius_pct} -log {log}
-        '''
+    shell: """usearch -cluster_otus {input} -minsize {params.minsize} -otus {output} -relabel OTU_ \
+                  -otu_radius_pct {params.otu_radius_pct} -log {log}"""
 
 
 # cluster
@@ -264,10 +243,8 @@ rule remove_chimeric_otus:
     params: mode = config['filtering']['chimera_mode']
     threads: 22
     log: "results/{eid}/{pid}/logs/uchime_ref.log"
-    shell:
-        '''usearch -uchime2_ref {input.fasta} -db {input.reference} -notmatched {output.notmatched} \
-            -chimeras {output.chimeras} -strand plus -threads {threads} -mode {params.mode} -log {log}
-        '''
+    shell: """usearch -uchime2_ref {input.fasta} -db {input.reference} -notmatched {output.notmatched} \
+                  -chimeras {output.chimeras} -strand plus -threads {threads} -mode {params.mode} -log {log}"""
 
 
 rule utax:
@@ -282,11 +259,9 @@ rule utax:
     params: utax_cutoff = config['taxonomy']['prediction_confidence_cutoff']
     threads: 22
     log: "results/{eid}/{pid}/logs/utax.log"
-    shell:
-        '''usearch -utax {input.fasta} -db {input.db} -strand both -threads {threads} \
-            -fastaout {output.fasta} -utax_cutoff {params.utax_cutoff} \
-            -utaxout {output.txt} -log {log}
-        '''
+    shell: """usearch -utax {input.fasta} -db {input.db} -strand both -threads {threads} \
+                  -fastaout {output.fasta} -utax_cutoff {params.utax_cutoff} \
+                  -utaxout {output.txt} -log {log}"""
 
 
 rule fix_utax_taxonomy:
@@ -323,11 +298,9 @@ rule blast:
         L = config['taxonomy']['prediction_confidence_cutoff'],
         db = config['blast_database']['fasta']
     threads: 22
-    shell:
-        '''blastn -query {input.fasta} -db {params.db} -num_alignments 200 \
-            -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore" \
-            -out {output} -num_threads {threads}
-        '''
+    shell: """blastn -query {input.fasta} -db {params.db} -num_alignments 200 \
+                  -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore" \
+                  -out {output} -num_threads {threads}"""
 
 
 rule lca:
@@ -384,15 +357,10 @@ rule compile_counts:
     params:
         threshold = config['mapping_to_otus']['read_identity_requirement']
     threads: 22
-    shell:
-        '''
-        usearch -usearch_global {input.fastq} -db {input.utax_db} -strand plus \
-            -id {params.threshold} -otutabout {output.utax_txt} \
-            -threads {threads}
-        usearch -usearch_global {input.fastq} -db {input.lca_db} -strand plus \
-            -id {params.threshold} -otutabout {output.lca_txt} \
-            -threads {threads}
-        '''
+    shell:"""usearch -usearch_global {input.fastq} -db {input.utax_db} -strand plus \
+                 -id {params.threshold} -otutabout {output.utax_txt} -threads {threads}
+             usearch -usearch_global {input.fastq} -db {input.lca_db} -strand plus \
+                 -id {params.threshold} -otutabout {output.lca_txt} -threads {threads}"""
 
 
 rule biom:
@@ -403,13 +371,10 @@ rule biom:
         utax_biom = "results/{eid}/{pid}/utax/OTU.biom",
         lca_biom = "results/{eid}/{pid}/OTU.biom"
     shadow: "shallow"
-    shell:
-        '''
-        sed 's|\"||g' {input.utax_txt} | sed 's|\,|\;|g' > OTU_converted.txt
-        biom convert -i OTU_converted.txt -o {output.utax_biom} --to-json --process-obs-metadata sc_separated --table-type "OTU table"
-        sed 's|\"||g' {input.lca_txt} | sed 's|\,|\;|g' > OTU_converted.txt
-        biom convert -i OTU_converted.txt -o {output.lca_biom} --to-json --process-obs-metadata sc_separated --table-type "OTU table"
-        '''
+    shell: '''sed 's|\"||g' {input.utax_txt} | sed 's|\,|\;|g' > OTU_converted.txt
+              biom convert -i OTU_converted.txt -o {output.utax_biom} --to-json --process-obs-metadata sc_separated --table-type "OTU table"
+              sed 's|\"||g' {input.lca_txt} | sed 's|\,|\;|g' > OTU_converted.txt
+              biom convert -i OTU_converted.txt -o {output.lca_biom} --to-json --process-obs-metadata sc_separated --table-type "OTU table"'''
 
 
 rule multiple_align:

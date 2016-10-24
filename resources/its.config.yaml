@@ -23,7 +23,10 @@ merging:
     minimum_merge_length: 175
 filtering:
     # fastas to parse into kmers which are then trimmed from the sequences
-    adapters: ref/phix174_ill.ref.fa.gz,ref/adapters.fa
+    adapters: ref/adapters.fa
+    contaminants: ref/phix174_ill.ref.fa.gz
+    # Look for shorter kmers at read tips down to this length; 0 disables
+    mink: 8
     # lower than 20 to allow overlap the chance to increase the quality
     minimum_base_quality: 10
     # kmer mismatches allowed during adapter trim process
