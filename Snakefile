@@ -144,6 +144,7 @@ rule quality_filter_reads:
         hdist = config['filtering']['allowable_kmer_mismatches'],
         k = config['filtering']['reference_kmer_match_length'],
         qtrim = "rl",
+        ktrim = "r",
         minlength = config['filtering']['minimum_passing_read_length']
     threads: 4
     shell: """bbduk2.sh -Xmx8g in={input.r1} in2={input.r2} out={output.r1} out2={output.r2} \
