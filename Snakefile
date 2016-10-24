@@ -144,13 +144,12 @@ rule quality_filter_reads:
         hdist = config['filtering']['allowable_kmer_mismatches'],
         k = config['filtering']['reference_kmer_match_length'],
         qtrim = "rl",
-        ktrim = "r",
         minlength = config['filtering']['minimum_passing_read_length']
     threads: 4
     shell: """bbduk2.sh -Xmx8g in={input.r1} in2={input.r2} out={output.r1} out2={output.r2} \
                   rref={params.rref} lref={params.lref} fref={params.fref} mink={params.mink} \
                   stats={output.stats} hdist={params.hdist} k={params.k} \
-                  trimq={params.quality} qtrim={params.qtrim} threads={threads} ktrim={params.ktrim} \
+                  trimq={params.quality} qtrim={params.qtrim} threads={threads} \
                   minlength={params.minlength} overwrite=true"""
 
 
