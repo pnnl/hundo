@@ -6,6 +6,7 @@ biom add-metadata -i some.biom -o phinch.biom --sample-metadata-fp tsv --output-
 #SampleID phinchID
 """
 import os
+import sys
 from snakemake.utils import report
 from subprocess import check_output
 
@@ -23,15 +24,16 @@ def read_count(fastq):
     return total
 
 
-def get_samples(eid):
+def get_samples(eid, min_reads=1000):
     samples = set()
     omitted = set()
     input_dir = os.path.join("results", eid, "demux")
     for f in os.listdir(input_dir):
         if (f.endswith("fastq") or f.endswith("fq")) and ("_r1" in f or "_R1" in f):
-            if read_count(os.path.join(input_dir, f)) > 1000:
+            if read_count(os.path.join(input_dir, f)) >= min_reads:
                 samples.add(f.partition(".")[0].partition("_")[0])
             else:
+                print("Omitting sample: %s" % f.partition(".")[0].partition("_")[0], file=sys.stderr)
                 omitted.add(f.partition(".")[0].partition("_")[0])
     return samples, omitted
 
@@ -76,7 +78,7 @@ def fix_fasta_tax_entry(tax, kingdom="?"):
 USEARCH_VERSION = check_output("usearch --version", shell=True).strip()
 CLUSTALO_VERSION = check_output("clustalo --version", shell=True).strip()
 EID = config['eid']
-SAMPLES, OMITTED = get_samples(EID)
+SAMPLES, OMITTED = get_samples(EID, config['minimum_reads'])
 # name output folder appropriately
 CLUSTER_THRESHOLD = 100 - config['clustering']['percent_of_allowable_difference']
 
@@ -418,7 +420,8 @@ rule report:
         alt_tax_metadata = config['taxonomy_database']['metadata'],
         chimera_metadata = config['chimera_database']['metadata'],
         chimera_citation = config['chimera_database']['citation'],
-        samples = SAMPLES
+        samples = SAMPLES,
+        minimum_reads = config['minimum_reads']
     output:
         html = "results/{eid}/{pid}/README.html"
     run:
@@ -583,6 +586,7 @@ rule report:
 
             <div id="raw-count-plot" style="min-width: 310px; height: 500px; margin: 0 auto"></div>
 
+        Omitted Samples: {OMITTED}
 
         Output
         ------

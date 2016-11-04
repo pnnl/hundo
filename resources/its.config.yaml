@@ -1,3 +1,5 @@
+# prefilter out any sample with less than this many starting sequences
+minimum_reads: 1000
 # used to fill missing taxonomy entries or convert domain to kingdom;
 # more for use in conjunction with utax ITS reference database
 kingdom: Fungi
