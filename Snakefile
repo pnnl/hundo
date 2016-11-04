@@ -131,9 +131,9 @@ rule quality_filter_reads:
         r1 = "results/{eid}/demux/{sample}_R1.fastq",
         r2 = "results/{eid}/demux/{sample}_R2.fastq"
     output:
-        r1 = temp("results/{eid}/{sample}_filtered_R1.fastq"),
-        r2 = temp("results/{eid}/{sample}_filtered_R2.fastq"),
-        stats = temp("results/{eid}/{sample}_quality_filtering_stats.txt")
+        r1 = temp("results/{eid}/demux/{sample}_filtered_R1.fastq"),
+        r2 = temp("results/{eid}/demux/{sample}_filtered_R2.fastq"),
+        stats = temp("results/{eid}/demux/{sample}_quality_filtering_stats.txt")
     message: "Filtering reads using BBDuk2 to remove adapters and phiX with matching kmer length of {params.k} at a hamming distance of {params.hdist} and quality trim both ends to Q{params.quality}. Reads shorter than {params.minlength} were discarded."
     params:
         lref = config['filtering']['adapters'],
@@ -154,21 +154,21 @@ rule quality_filter_reads:
 
 
 rule count_filtered_reads:
-    input: "results/{eid}/{sample}_filtered_R1.fastq"
+    input: "results/{eid}/demux/{sample}_filtered_R1.fastq"
     output: "results/{eid}/logs/{sample}_filtered_R1.fastq.count"
     shell: "awk '{{n++}}END{{print n/4}}' {input} > {output}"
 
 
 rule combine_filtering_stats:
-    input: expand("results/{eid}/{sample}_quality_filtering_stats.txt", eid=EID, sample=SAMPLES)
+    input: expand("results/{eid}/demux/{sample}_quality_filtering_stats.txt", eid=EID, sample=SAMPLES)
     output: "results/{eid}/logs/quality_filtering_stats.txt".format(eid=EID)
     shell: "cat {input} > {output}"
 
 
 rule merge_reads:
     input:
-        r1 = "results/{eid}/{sample}_filtered_R1.fastq",
-        r2 = "results/{eid}/{sample}_filtered_R2.fastq"
+        r1 = "results/{eid}/demux/{sample}_filtered_R1.fastq",
+        r2 = "results/{eid}/demux/{sample}_filtered_R2.fastq"
     output: temp("results/{eid}/{sample}_merged.fastq")
     version: USEARCH_VERSION
     message: "Merging paired-end reads with USEARCH at a minimum merge length of {params.minimum_merge_length}"
@@ -199,7 +199,7 @@ rule fastq_filter:
     message: "Filtering FASTQ with USEARCH with an expected maximum error rate of {params.maxee}"
     params: maxee = config['filtering']['maximum_expected_error']
     log: "results/{eid}/{pid}/logs/fastq_filter.log".format(eid=EID, pid=CLUSTER_THRESHOLD)
-    shell: "usearch -fastq_filter {input} -fastq_maxee {params.maxee} -fastaout {output} -relabel Filt -log {log}"
+    shell: "usearch -fastq_filter {input} -fastq_maxee {params.maxee} -fastaout {output} -log {log}"
 
 
 rule dereplicate_sequences:
