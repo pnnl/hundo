@@ -1,13 +1,14 @@
 # Install
 
+The simplest way to do this is to grab the Python 3.5 version of [Anaconda](https://www.continuum.io/downloads), then:
 
-Install dependencies using Bioconda repository:
+[![bioconda-badge](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat-square)](http://bioconda.github.io)
 
 ```
 conda install -c bioconda snakemake biom-format fasttree bbmap blast clustalo
 ```
 
-Unfortunately, [USEARCH](http://www.drive5.com/usearch/download.html) is currently a dependency of this protocol.
+Unfortunately, [USEARCH](http://www.drive5.com/usearch/download.html) is currently a dependency of this protocol and it is not easily distributed.
 
 # Usage
 
@@ -93,7 +94,7 @@ The summary portion of an example `README.html`:
 
 See sample configuration files in resources for defaults. Reference database information has been pre-filled to an extent and encompasses databases included in this repository.
 
-Notable options are: 
+Notable options are:
 
 ```
 annotation_method: blast
@@ -153,4 +154,3 @@ test-experiment/
     └── quality_filter
         └── *.fastq                             # files that should have been cleaned up!
 ```
-
