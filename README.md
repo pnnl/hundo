@@ -118,39 +118,39 @@ Altering `percent_of_allowable_difference` also write an entirely new output dir
 This looks like:
 
 ```
-            test-experiment/
-                ├── 97                                      # clustering pairwise identity threshold
-                │   ├── blast
-                │   │   ├── blast_hits.txt                  # raw blast hits per OTU seed seq
-                │   │   ├── lca_assignments.txt             # raw lca results TSV from blast hits
-                │   │   ├── OTU.biom                        # tax annotated biom (no metadata, no normalization)
-                │   │   ├── OTU_tax.fasta                   # otu seqs with tax in FASTA header
-                │   │   ├── OTU.txt                         # tab delimited otu table with taxonomy
-                │   │   └── README.html                     # results report when annotation method is 'blast'
-                │   ├── logs
-                │   │   ├── cluster_sequences.log
-                │   │   ├── fasttree.log
-                │   │   └── uniques.log
-                │   ├── OTU_aligned.fasta                   # multiple alignment file of otu seed seqs
-                │   ├── OTU.fasta                           # otu seqs without taxonomy
-                │   ├── OTU.tree                            # newick tree of multiple alignment
-                │   └── utax
-                │       ├── logs
-                │       │   └── utax.log
-                │       ├── OTU.biom                        # tax annotated biom (no metadata, no normalization)
-                │       ├── OTU_tax.fasta                   # otu seqs with tax in FASTA header
-                │       ├── OTU.txt                         # tab delimited otu table with taxonomy
-                │       ├── README.html                     # results report when annotation method is 'utax'
-                │       └── utax_hits.txt                   # raw UTAX hits per OTU seed seq
-                ├── demux
-                │   ├── *.fastq.count
-                │   └── *.fastq
-                ├── logs
-                │   ├── quality_filtering_stats.txt
-                │   └── *.count
-                ├── merged_?.fasta                          # error corrected FASTA prior to clustering into OTU seqs
-                ├── merged.fastq                            # all sample reads merged into single file with updated headers
-                └── quality_filter
-                    └── *.fastq                             # files that should have been cleaned up!
+test-experiment/
+    ├── 97                                      # clustering pairwise identity threshold
+    │   ├── blast
+    │   │   ├── blast_hits.txt                  # raw blast hits per OTU seed seq
+    │   │   ├── lca_assignments.txt             # raw lca results TSV from blast hits
+    │   │   ├── OTU.biom                        # tax annotated biom (no metadata, no normalization)
+    │   │   ├── OTU_tax.fasta                   # otu seqs with tax in FASTA header
+    │   │   ├── OTU.txt                         # tab delimited otu table with taxonomy
+    │   │   └── README.html                     # results report when annotation method is 'blast'
+    │   ├── logs
+    │   │   ├── cluster_sequences.log
+    │   │   ├── fasttree.log
+    │   │   └── uniques.log
+    │   ├── OTU_aligned.fasta                   # multiple alignment file of otu seed seqs
+    │   ├── OTU.fasta                           # otu seqs without taxonomy
+    │   ├── OTU.tree                            # newick tree of multiple alignment
+    │   └── utax
+    │       ├── logs
+    │       │   └── utax.log
+    │       ├── OTU.biom                        # tax annotated biom (no metadata, no normalization)
+    │       ├── OTU_tax.fasta                   # otu seqs with tax in FASTA header
+    │       ├── OTU.txt                         # tab delimited otu table with taxonomy
+    │       ├── README.html                     # results report when annotation method is 'utax'
+    │       └── utax_hits.txt                   # raw UTAX hits per OTU seed seq
+    ├── demux
+    │   ├── *.fastq.count
+    │   └── *.fastq
+    ├── logs
+    │   ├── quality_filtering_stats.txt
+    │   └── *.count
+    ├── merged_?.fasta                          # error corrected FASTA prior to clustering into OTU seqs
+    ├── merged.fastq                            # all sample reads merged into single file with updated headers
+    └── quality_filter
+        └── *.fastq                             # files that should have been cleaned up!
 ```
 
