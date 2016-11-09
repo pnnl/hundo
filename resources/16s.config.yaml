@@ -1,9 +1,18 @@
 # prefilter out any sample with less than this many starting sequences
 minimum_reads: 1000
+# either use 'blast' or 'utax'
+# with blast and SILVA, more sequences will be annotated with reasonable
+# confidence
+# with utax, fewer sequences will be annotated more preciously to what
+# prediction_confidence_cutoff is set to below
+annotation_method: blast
+# 'true' or 'false'
+# this is a reference-based chimera filter and is applied to OTU seed sequences
+chimera_filter_seed_sequences: true
 # used to fill missing taxonomy entries or convert domain to kingdom;
 # more for use in conjunction with utax ITS reference database
 kingdom: "?"
-taxonomy_database:
+utax_database:
     fasta: ref/rdp_16s_trainset16/fasta/refdb.fa
     # joined read length dependent; utax taxconfs file
     trained_parameters: ref/rdp_16s_trainset16/taxconfs/250.tc
@@ -46,7 +55,7 @@ filtering:
     # specific - high confidence, high false-negative rate (just less so than high_confidence)
     # balanced - balance false negatives and false positives to minimize the overall error rate on typical data
     # sensitive - emphasizes high sensitivity at the expense of a high false positive rate
-    chimera_mode: balanced
+    chimera_mode: high_confidence
 clustering:
     minimum_sequence_abundance: 2
     # maximum difference between an OTU member sequence and the representative sequence of that OTU
@@ -57,7 +66,7 @@ taxonomy:
     prediction_confidence_cutoff: 0.8
     # comma separated list of min % identity to accept a database hit at a
     # taxonomic level; Species to Kingdom
-    lca_cutoffs: 97,95,93,91,88,78,0
+    lca_cutoffs: 99,97,95,90,85,80,0
 mapping_to_otus:
     # reflects the difference between OTU clusters to reduce ambiguous assignment
     read_identity_requirement: 0.97

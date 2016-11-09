@@ -1,10 +1,3 @@
-"""
-Notes pertaining to eventual addition of Phinch compatible biom file...
-otu.txt , commas to semicolons
-biom convert -i otu.nocommas.txt -o some.biom --to-json
-biom add-metadata -i some.biom -o phinch.biom --sample-metadata-fp tsv --output-as-json
-#SampleID phinchID
-"""
 import os
 import sys
 from snakemake.utils import report
@@ -30,11 +23,13 @@ def get_samples(eid, min_reads=1000):
     input_dir = os.path.join("results", eid, "demux")
     for f in os.listdir(input_dir):
         if (f.endswith("fastq") or f.endswith("fq")) and ("_r1" in f or "_R1" in f):
-            if read_count(os.path.join(input_dir, f)) >= min_reads:
-                samples.add(f.partition(".")[0].partition("_")[0])
+            sample_id = f.partition(".")[0].partition("_")[0]
+            count = read_count(os.path.join(input_dir, f))
+            if count >= min_reads:
+                samples.add(sample_id)
             else:
-                print("Omitting sample: %s" % f.partition(".")[0].partition("_")[0], file=sys.stderr)
-                omitted.add(f.partition(".")[0].partition("_")[0])
+                print("Omitting sample: %s (%d reads)" % (sample_id, count), file=sys.stderr)
+                omitted.add(sample_id)
     return samples, omitted
 
 
@@ -75,33 +70,39 @@ def fix_fasta_tax_entry(tax, kingdom="?"):
     return "%s;tax=%s;" % (toks[0], new_tax)
 
 
+PROTOCOL_VERSION = "1.0"
 USEARCH_VERSION = check_output("usearch --version", shell=True).strip()
 CLUSTALO_VERSION = check_output("clustalo --version", shell=True).strip()
-EID = config['eid']
-SAMPLES, OMITTED = get_samples(EID, config['minimum_reads'])
+SAMPLES, OMITTED = get_samples(config['eid'], config['minimum_reads'])
 # name output folder appropriately
 CLUSTER_THRESHOLD = 100 - config['clustering']['percent_of_allowable_difference']
+METHOD = config["annotation_method"]
 
 
 rule all:
     input:
-        expand("results/{eid}/logs/quality_filtering_stats.txt", eid=EID),
-        expand("results/{eid}/demux/{sample}_R1.fastq", eid=EID, sample=SAMPLES),
-        expand("results/{eid}/demux/{sample}_R2.fastq", eid=EID, sample=SAMPLES),
-        expand("results/{eid}/logs/{sample}_R1.fastq.count", eid=EID, sample=SAMPLES),
-        expand("results/{eid}/logs/{sample}_filtered_R1.fastq.count", eid=EID, sample=SAMPLES),
-        expand("results/{eid}/logs/{sample}_merged.fastq.count", eid=EID, sample=SAMPLES),
-        expand("results/{eid}/{pid}/OTU.biom", eid=EID, pid=CLUSTER_THRESHOLD),
-        expand("results/{eid}/{pid}/OTU.tree", eid=EID, pid=CLUSTER_THRESHOLD),
-        expand("results/{eid}/{pid}/utax/OTU.biom", eid=EID, pid=CLUSTER_THRESHOLD),
-        expand("results/{eid}/{pid}/README.html", eid=EID, pid=CLUSTER_THRESHOLD)
+        expand("results/{eid}/logs/quality_filtering_stats.txt", eid=config['eid']),
+        expand("results/{eid}/demux/{sample}_R1.fastq", eid=config['eid'], sample=SAMPLES),
+        expand("results/{eid}/demux/{sample}_R2.fastq", eid=config['eid'], sample=SAMPLES),
+        expand("results/{eid}/logs/{sample}_R1.fastq.count", eid=config['eid'], sample=SAMPLES),
+        expand("results/{eid}/logs/{sample}_filtered_R1.fastq.count", eid=config['eid'], sample=SAMPLES),
+        expand("results/{eid}/logs/{sample}_merged.fastq.count", eid=config['eid'], sample=SAMPLES),
+        expand("results/{eid}/{pid}/{method}/OTU.biom", eid=config['eid'], pid=CLUSTER_THRESHOLD, method=METHOD),
+        expand("results/{eid}/{pid}/OTU.tree", eid=config['eid'], pid=CLUSTER_THRESHOLD, method=METHOD),
+        expand("results/{eid}/{pid}/{method}/README.html", eid=config['eid'], pid=CLUSTER_THRESHOLD, method=METHOD),
+        expand("results/{eid}/{pid}/{method}/PROTOCOL_VERSION", eid=config['eid'], pid=CLUSTER_THRESHOLD, method=METHOD)
+
+
+rule version:
+    output: "results/{eid}/{pid}/{method}/PROTOCOL_VERSION".format(eid=config['eid'], pid=CLUSTER_THRESHOLD, method=METHOD)
+    shell: 'echo "hundo: {PROTOCOL_VERSION}" > {output}'
 
 
 rule make_tax_database:
     input:
-        fasta = config['taxonomy_database']['fasta'],
-        trained_parameters = config['taxonomy_database']['trained_parameters']
-    output: os.path.splitext(config['taxonomy_database']['trained_parameters'])[0] + '.udb'
+        fasta = config['utax_database']['fasta'],
+        trained_parameters = config['utax_database']['trained_parameters']
+    output: os.path.splitext(config['utax_database']['trained_parameters'])[0] + '.udb'
     version: USEARCH_VERSION
     message: "Creating a UTAX database trained on {input.fasta} using {input.trained_parameters}"
     shell: "usearch -makeudb_utax {input.fasta} -taxconfsin {input.trained_parameters} -output {output}"
@@ -133,9 +134,9 @@ rule quality_filter_reads:
         r1 = "results/{eid}/demux/{sample}_R1.fastq",
         r2 = "results/{eid}/demux/{sample}_R2.fastq"
     output:
-        r1 = temp("results/{eid}/demux/{sample}_filtered_R1.fastq"),
-        r2 = temp("results/{eid}/demux/{sample}_filtered_R2.fastq"),
-        stats = temp("results/{eid}/demux/{sample}_quality_filtering_stats.txt")
+        r1 = temp("results/{eid}/quality_filter/{sample}_R1.fastq"),
+        r2 = temp("results/{eid}/quality_filter/{sample}_R2.fastq"),
+        stats = temp("results/{eid}/quality_filter/{sample}_quality_filtering_stats.txt")
     message: "Filtering reads using BBDuk2 to remove adapters and phiX with matching kmer length of {params.k} at a hamming distance of {params.hdist} and quality trim both ends to Q{params.quality}. Reads shorter than {params.minlength} were discarded."
     params:
         lref = config['filtering']['adapters'],
@@ -156,39 +157,39 @@ rule quality_filter_reads:
 
 
 rule count_filtered_reads:
-    input: "results/{eid}/demux/{sample}_filtered_R1.fastq"
+    input: "results/{eid}/quality_filter/{sample}_R1.fastq"
     output: "results/{eid}/logs/{sample}_filtered_R1.fastq.count"
     shell: "awk '{{n++}}END{{print n/4}}' {input} > {output}"
 
 
 rule combine_filtering_stats:
-    input: expand("results/{eid}/demux/{sample}_quality_filtering_stats.txt", eid=EID, sample=SAMPLES)
-    output: "results/{eid}/logs/quality_filtering_stats.txt".format(eid=EID)
+    input: expand("results/{eid}/quality_filter/{sample}_quality_filtering_stats.txt", eid=config['eid'], sample=SAMPLES)
+    output: "results/{eid}/logs/quality_filtering_stats.txt".format(eid=config['eid'])
     shell: "cat {input} > {output}"
 
 
 rule merge_reads:
     input:
-        r1 = "results/{eid}/demux/{sample}_filtered_R1.fastq",
-        r2 = "results/{eid}/demux/{sample}_filtered_R2.fastq"
-    output: temp("results/{eid}/{sample}_merged.fastq")
+        r1 = "results/{eid}/quality_filter/{sample}_R1.fastq",
+        r2 = "results/{eid}/quality_filter/{sample}_R2.fastq"
+    output: temp("results/{eid}/demux/{sample}_merged.fastq")
     version: USEARCH_VERSION
     message: "Merging paired-end reads with USEARCH at a minimum merge length of {params.minimum_merge_length}"
     params: minimum_merge_length = config['merging']['minimum_merge_length']
-    log: "results/{eid}/{pid}/logs/fastq_mergepairs.log".format(eid=EID, pid=CLUSTER_THRESHOLD)
+    log: "results/{eid}/{pid}/logs/fastq_mergepairs.log".format(eid=config['eid'], pid=CLUSTER_THRESHOLD)
     shell: """usearch -fastq_mergepairs {input.r1} -relabel @ -sample {wildcards.sample} \
                   -fastq_minmergelen {params.minimum_merge_length} \
                   -fastqout {output} -log {log}"""
 
 
 rule count_joined_reads:
-    input: "results/{eid}/{sample}_merged.fastq"
+    input: "results/{eid}/demux/{sample}_merged.fastq"
     output: "results/{eid}/logs/{sample}_merged.fastq.count"
     shell: "awk '{{n++}}END{{print n/4}}' {input} > {output}"
 
 
 rule combine_merged_reads:
-    input: expand("results/{eid}/{sample}_merged.fastq", eid=EID, sample=SAMPLES)
+    input: expand("results/{eid}/demux/{sample}_merged.fastq", eid=config['eid'], sample=SAMPLES)
     output: "results/{eid}/merged.fastq"
     message: "Concatenating the merged reads into a single file"
     shell: "cat {input} > {output}"
@@ -200,7 +201,7 @@ rule fastq_filter:
     version: USEARCH_VERSION
     message: "Filtering FASTQ with USEARCH with an expected maximum error rate of {params.maxee}"
     params: maxee = config['filtering']['maximum_expected_error']
-    log: "results/{eid}/{pid}/logs/fastq_filter.log".format(eid=EID, pid=CLUSTER_THRESHOLD)
+    log: "results/{eid}/{pid}/logs/fastq_filter.log".format(eid=config['eid'], pid=CLUSTER_THRESHOLD)
     shell: "usearch -fastq_filter {input} -fastq_maxee {params.maxee} -fastaout {output} -log {log}"
 
 
@@ -210,7 +211,7 @@ rule dereplicate_sequences:
     version: USEARCH_VERSION
     message: "Dereplicating with USEARCH"
     threads: 22
-    log: "results/{eid}/{pid}/logs/uniques.log".format(eid=EID, pid=CLUSTER_THRESHOLD)
+    log: "results/{eid}/{pid}/logs/uniques.log".format(eid=config['eid'], pid=CLUSTER_THRESHOLD)
     shell: "usearch -fastx_uniques {input} -fastaout {output} -sizeout -threads {threads} -log {log}"
 
 
@@ -233,154 +234,150 @@ rule cluster_sequences:
 # -unoise $out/uniques.fa -fastaout $out/denoised.fa -relabel Den -log $out/unoise.log -minampsize 4
 
 
-rule remove_chimeric_otus:
-    input:
-        fasta = rules.cluster_sequences.output,
-        reference = rules.make_uchime_database.output
-    output:
-        notmatched = "results/{eid}/{pid}/OTU.fasta",
-        chimeras = "results/{eid}/{pid}/chimeras.fasta"
-    version: USEARCH_VERSION
-    message: "Chimera filtering OTU seed sequences against %s" % config['chimera_database']['metadata']
-    params: mode = config['filtering']['chimera_mode']
-    threads: 22
-    log: "results/{eid}/{pid}/logs/uchime_ref.log"
-    shell: """usearch -uchime2_ref {input.fasta} -db {input.reference} -notmatched {output.notmatched} \
-                  -chimeras {output.chimeras} -strand plus -threads {threads} -mode {params.mode} -log {log}"""
+if config['chimera_filter_seed_sequences']:
+    rule remove_chimeric_otus:
+        input:
+            fasta = rules.cluster_sequences.output,
+            reference = rules.make_uchime_database.output
+        output:
+            notmatched = "results/{eid}/{pid}/OTU.fasta",
+            chimeras = "results/{eid}/{pid}/chimeras.fasta"
+        version: USEARCH_VERSION
+        message: "Chimera filtering OTU seed sequences against %s" % config['chimera_database']['metadata']
+        params: mode = config['filtering']['chimera_mode']
+        threads: 22
+        log: "results/{eid}/{pid}/logs/uchime_ref.log"
+        shell: """usearch -uchime2_ref {input.fasta} -db {input.reference} -notmatched {output.notmatched} \
+                      -chimeras {output.chimeras} -strand plus -threads {threads} -mode {params.mode} -log {log}"""
+else:
+    rule remove_chimeric_otus:
+        input: rules.cluster_sequences.output
+        output: "results/{eid}/{pid}/OTU.fasta"
+        shell: "cp {input} {output}"
 
 
-rule utax:
-    input:
-        fasta = rules.remove_chimeric_otus.output.notmatched,
-        db = rules.make_tax_database.output
-    output:
-        fasta = temp("results/{eid}/{pid}/utax/OTU_tax_utax.fasta"),
-        txt = temp("results/{eid}/{pid}/utax/OTU_tax_tax.txt")
-    version: USEARCH_VERSION
-    message: "Assigning taxonomies with UTAX algorithm using USEARCH with a confidence cutoff of {params.utax_cutoff}"
-    params: utax_cutoff = config['taxonomy']['prediction_confidence_cutoff']
-    threads: 22
-    log: "results/{eid}/{pid}/logs/utax.log"
-    shell: """usearch -utax {input.fasta} -db {input.db} -strand both -threads {threads} \
-                  -fastaout {output.fasta} -utax_cutoff {params.utax_cutoff} \
-                  -utaxout {output.txt} -log {log}"""
+if METHOD == "utax":
+    rule utax:
+        input:
+            fasta = "results/{eid}/{pid}/OTU.fasta",
+            db = rules.make_tax_database.output
+        output:
+            fasta = temp("results/{eid}/{pid}/{method}/OTU_tax_utax.fasta"),
+            txt = temp("results/{eid}/{pid}/{method}/OTU_tax_utax.txt")
+        version: USEARCH_VERSION
+        message: "Assigning taxonomies with UTAX algorithm using USEARCH with a confidence cutoff of {params.utax_cutoff}"
+        params: utax_cutoff = config['taxonomy']['prediction_confidence_cutoff']
+        threads: 22
+        log: "results/{eid}/{pid}/{method}/logs/utax.log"
+        shell: """usearch -utax {input.fasta} -db {input.db} -strand both -threads {threads} \
+                      -fastaout {output.fasta} -utax_cutoff {params.utax_cutoff} \
+                      -utaxout {output.txt} -log {log}"""
 
 
-rule fix_utax_taxonomy:
-    input:
-        fasta = rules.utax.output.fasta,
-        txt = rules.utax.output.txt
-    output:
-        fasta = "results/{eid}/{pid}/utax/OTU_tax.fasta",
-        txt = "results/{eid}/{pid}/utax/OTU_tax.txt"
-    params: kingdom = config['kingdom']
-    message: "Altering taxa to reflect QIIME style annotation"
-    run:
-        with open(input.fasta) as ifh, open(output.fasta, 'w') as ofh:
-            for line in ifh:
-                line = line.strip()
-                if not line.startswith(">OTU_"):
-                    print(line, file=ofh)
-                else:
-                    print(fix_fasta_tax_entry(line, params.kingdom), file=ofh)
-        with open(input.txt) as ifh, open(output.txt, 'w') as ofh:
-            for line in ifh:
-                toks = line.strip().split("\t")
-                print(toks[0], fix_tax_entry(toks[1], params.kingdom),
-                      fix_tax_entry(toks[2], params.kingdom), toks[3], sep="\t", file=ofh)
-
-
-rule blast:
-    input:
-        fasta = rules.remove_chimeric_otus.output.notmatched,
-        db = rules.make_blast_db.output
-    output: "results/{eid}/{pid}/blast/blast_hits.txt"
-    params:
-        P = config['taxonomy']['lca_cutoffs'],
-        L = config['taxonomy']['prediction_confidence_cutoff'],
-        db = config['blast_database']['fasta']
-    threads: 22
-    shell: """blastn -query {input.fasta} -db {params.db} -num_alignments 200 \
-                  -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore" \
-                  -out {output} -num_threads {threads}"""
-
-
-rule lca:
-    input: rules.blast.output
-    output: "results/{eid}/{pid}/blast/lca_assignments.txt"
-    params:
-        tax = config['blast_database']['taxonomy'],
-        P = config['taxonomy']['lca_cutoffs'],
-        L = config['taxonomy']['prediction_confidence_cutoff']
-    shell: "resources/lca_src/lca -L {params.L} -P {params.P} -i {input} -r {params.tax} -o {output}"
-
-
-rule assignments_from_lca:
-    input:
-        tsv = rules.lca.output,
-        fasta = rules.remove_chimeric_otus.output.notmatched
-    output: "results/{eid}/{pid}/OTU_tax.fasta"
-    run:
-        lca_results = {}
-        with open(input.tsv[0]) as fh:
-            for line in fh:
-                line = line.strip().split("\t")
-                # file has a header, but doesn't matter
-                tax = []
-                for i, level in enumerate('kpcofgs'):
-                    try:
-                        tax.append("%s__%s" % (level, line[i + 1]))
-                    except IndexError:
-                        # ensure unassigned
-                        for t in line[1:]:
-                            assert t == "?"
-                        tax.append("%s__?" % level)
-                lca_results[line[0]] = tax
-        with open(input.fasta) as fasta_file, open(output[0], "w") as outfile:
-                for line in fasta_file:
+    rule fix_utax_taxonomy:
+        input:
+            fasta = rules.utax.output.fasta,
+            txt = rules.utax.output.txt
+        output:
+            fasta = "results/{eid}/{pid}/{method}/OTU_tax.fasta",
+            txt = "results/{eid}/{pid}/{method}/utax_hits.txt"
+        params: kingdom = config['kingdom']
+        message: "Altering taxa to reflect QIIME style annotation"
+        run:
+            with open(input.fasta) as ifh, open(output.fasta, 'w') as ofh:
+                for line in ifh:
                     line = line.strip()
-                    if not line.startswith(">"):
-                        print(line, file=outfile)
+                    if not line.startswith(">OTU_"):
+                        print(line, file=ofh)
                     else:
+                        print(fix_fasta_tax_entry(line, params.kingdom), file=ofh)
+            with open(input.txt) as ifh, open(output.txt, 'w') as ofh:
+                for line in ifh:
+                    toks = line.strip().split("\t")
+                    print(toks[0], fix_tax_entry(toks[1], params.kingdom),
+                          fix_tax_entry(toks[2], params.kingdom), toks[3], sep="\t", file=ofh)
+
+else:
+    rule blast:
+        input:
+            fasta = "results/{eid}/{pid}/OTU.fasta",
+            db = rules.make_blast_db.output
+        output: "results/{eid}/{pid}/blast/blast_hits.txt"
+        params:
+            P = config['taxonomy']['lca_cutoffs'],
+            L = config['taxonomy']['prediction_confidence_cutoff'],
+            db = config['blast_database']['fasta']
+        threads: 22
+        shell: """blastn -query {input.fasta} -db {params.db} -num_alignments 50 \
+                      -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore" \
+                      -out {output} -num_threads {threads}"""
+
+
+    rule lca:
+        input: rules.blast.output
+        output: "results/{eid}/{pid}/blast/lca_assignments.txt"
+        params:
+            tax = config['blast_database']['taxonomy'],
+            P = config['taxonomy']['lca_cutoffs'],
+            L = config['taxonomy']['prediction_confidence_cutoff']
+        shell: "resources/lca_src/lca -L {params.L} -P {params.P} -i {input} -r {params.tax} -o {output}"
+
+
+    rule assignments_from_lca:
+        input:
+            tsv = rules.lca.output,
+            fasta = "results/{eid}/{pid}/OTU.fasta"
+        output: "results/{eid}/{pid}/{method}/OTU_tax.fasta"
+        run:
+            lca_results = {}
+            with open(input.tsv[0]) as fh:
+                for line in fh:
+                    line = line.strip().split("\t")
+                    # file has a header, but doesn't matter
+                    tax = []
+                    for i, level in enumerate('kpcofgs'):
                         try:
-                            print(">%s;tax=%s" % (line[1:], ",".join(lca_results[line[1:]])), file=outfile)
-                        except KeyError:
-                            print(">%s;tax=k__?,p__?,c__?,o__?,f__?,g__?,s__?" % line[1:], file=outfile)
+                            tax.append("%s__%s" % (level, line[i + 1]))
+                        except IndexError:
+                            # ensure unassigned
+                            for t in line[1:]:
+                                assert t == "?"
+                            tax.append("%s__?" % level)
+                    lca_results[line[0]] = tax
+            with open(input.fasta) as fasta_file, open(output[0], "w") as outfile:
+                    for line in fasta_file:
+                        line = line.strip()
+                        if not line.startswith(">"):
+                            print(line, file=outfile)
+                        else:
+                            try:
+                                print(">%s;tax=%s" % (line[1:], ",".join(lca_results[line[1:]])), file=outfile)
+                            except KeyError:
+                                print(">%s;tax=k__?,p__?,c__?,o__?,f__?,g__?,s__?" % line[1:], file=outfile)
 
 
 rule compile_counts:
     input:
         fastq = rules.combine_merged_reads.output,
-        utax_db = rules.fix_utax_taxonomy.output.fasta,
-        lca_db = rules.assignments_from_lca.output
-    output:
-        utax_txt = "results/{eid}/{pid}/utax/OTU.txt",
-        lca_txt = "results/{eid}/{pid}/OTU.txt"
-    params:
-        threshold = config['mapping_to_otus']['read_identity_requirement']
+        fasta = "results/{eid}/{pid}/{method}/OTU_tax.fasta"
+    output: "results/{eid}/{pid}/{method}/OTU.txt"
+    params: threshold = config['mapping_to_otus']['read_identity_requirement']
     threads: 22
-    shell:"""usearch -usearch_global {input.fastq} -db {input.utax_db} -strand plus \
-                 -id {params.threshold} -otutabout {output.utax_txt} -threads {threads}
-             usearch -usearch_global {input.fastq} -db {input.lca_db} -strand plus \
-                 -id {params.threshold} -otutabout {output.lca_txt} -threads {threads}"""
+    shell:"""usearch -usearch_global {input.fastq} -db {input.fasta} -strand plus \
+                 -id {params.threshold} -otutabout {output} -threads {threads}"""
 
 
 rule biom:
-    input:
-        utax_txt = rules.compile_counts.output.utax_txt,
-        lca_txt = rules.compile_counts.output.lca_txt
-    output:
-        utax_biom = "results/{eid}/{pid}/utax/OTU.biom",
-        lca_biom = "results/{eid}/{pid}/OTU.biom"
+    input: rules.compile_counts.output
+    output: "results/{eid}/{pid}/{method}/OTU.biom"
     shadow: "shallow"
-    shell: '''sed 's|\"||g' {input.utax_txt} | sed 's|\,|\;|g' > OTU_converted.txt
-              biom convert -i OTU_converted.txt -o {output.utax_biom} --to-json --process-obs-metadata sc_separated --table-type "OTU table"
-              sed 's|\"||g' {input.lca_txt} | sed 's|\,|\;|g' > OTU_converted.txt
-              biom convert -i OTU_converted.txt -o {output.lca_biom} --to-json --process-obs-metadata sc_separated --table-type "OTU table"'''
+    shell: '''sed 's|\"||g' {input} | sed 's|\,|\;|g' > OTU_converted.txt
+              biom convert -i OTU_converted.txt -o {output} --to-json \
+                  --process-obs-metadata sc_separated --table-type "OTU table"'''
 
 
 rule multiple_align:
-    input: rules.remove_chimeric_otus.output.notmatched
+    input: "results/{eid}/{pid}/OTU.fasta"
     output: "results/{eid}/{pid}/OTU_aligned.fasta"
     message: "Multiple alignment of samples using Clustal Omega"
     version: CLUSTALO_VERSION
@@ -398,12 +395,12 @@ rule newick_tree:
 
 rule report:
     input:
-        file1 = "results/{eid}/{pid}/OTU.biom",
-        file2 = "results/{eid}/{pid}/OTU.fasta",
-        file3 = "results/{eid}/{pid}/OTU.tree",
-        raw_counts = expand("results/{eid}/logs/{sample}_R1.fastq.count", eid=EID, sample=SAMPLES),
-        filtered_counts = expand("results/{eid}/logs/{sample}_filtered_R1.fastq.count", eid=EID, sample=SAMPLES),
-        merged_counts = expand("results/{eid}/logs/{sample}_merged.fastq.count", eid=EID, sample=SAMPLES),
+        file1 = "results/{eid}/{pid}/{method}/OTU.biom".format(eid=config['eid'], pid=CLUSTER_THRESHOLD, method=METHOD),
+        file2 = "results/{eid}/{pid}/OTU.fasta".format(eid=config['eid'], pid=CLUSTER_THRESHOLD),
+        file3 = "results/{eid}/{pid}/OTU.tree".format(eid=config['eid'], pid=CLUSTER_THRESHOLD),
+        raw_counts = expand("results/{eid}/logs/{sample}_R1.fastq.count", eid=config['eid'], sample=SAMPLES),
+        filtered_counts = expand("results/{eid}/logs/{sample}_filtered_R1.fastq.count", eid=config['eid'], sample=SAMPLES),
+        merged_counts = expand("results/{eid}/logs/{sample}_merged.fastq.count", eid=config['eid'], sample=SAMPLES),
         css = "resources/report.css"
     shadow: "shallow"
     params:
@@ -415,11 +412,6 @@ rule report:
         tax_cutoff = config['taxonomy']['prediction_confidence_cutoff'],
         tax_levels = config['taxonomy']['lca_cutoffs'],
         min_seq_abundance = config['clustering']['minimum_sequence_abundance'],
-        tax_metadata = config['blast_database']['metadata'],
-        tax_citation = config['blast_database']['citation'],
-        alt_tax_metadata = config['taxonomy_database']['metadata'],
-        chimera_metadata = config['chimera_database']['metadata'],
-        chimera_citation = config['chimera_database']['citation'],
         samples = SAMPLES,
         minimum_reads = config['minimum_reads']
     output:
@@ -430,18 +422,54 @@ rule report:
         from operator import itemgetter
         from numpy import std
 
+        # writing up some methods
+        if config["annotation_method"] == "blast":
+            taxonomy_metadata = config["blast_database"]["metadata"]
+            taxonomy_citation = config["blast_database"]["citation"]
+            taxonomy_assignment = ("Taxonomy was assigned to OTU sequences using BLAST [7] "
+                                   "alignments followed by least common ancestor assignments "
+                                   "across {meta} [8].").format(meta=taxonomy_metadata)
+            algorithm_citation = ('7. Camacho C., Coulouris G., Avagyan V., Ma N., '
+                                  'Papadopoulos J., Bealer K., & Madden T.L. (2008) "BLAST+: '
+                                  'architecture and applications." BMC Bioinformatics 10:421.')
+        else:
+            taxonomy_metadata = config["utax_database"]["metadata"]
+            taxonomy_citation = config["utax_database"]["citation"]
+            taxonomy_assignment = ("Taxonomy was assigned to OTU sequence using the UTAX [7]"
+                                   "algorithm of USEARCH across {meta} [7]").format(meta=taxonomy_metadata)
+            algorithm_citation = "7. http://drive5.com/usearch/manual/utax_algo.html"
+        if config["chimera_filter_seed_sequences"]:
+            chimera_info = ("This occurs *de novo* during clustering using the UCHIME algorithm and as reference-based on "
+                            "the OTU seed sequences against {chimera}").format(chimera=config["chimera_database"]["metadata"])
+            chimera_citation = "9. {cite}".format(cite=config["chimera_database"]["citation"])
+            chimera_filtering = ("OTU seed sequences were filtered against {meta} [9] to identify "
+                                 "chimeric OTUs using USEARCH.").format(meta=config["chimera_database"]["metadata"])
+        else:
+            chimera_info = "This occurs *de novo* during clustering using the UCHIME algorithm."
+            chimera_citation = ""
+            chimera_filtering = ""
+
+        # omitted samples bulleted list
+        omitted_samples = "".join(["- %s\n" % i for i in OMITTED])
+
+        # stats from the biom table
         summary_csv = "stats.csv"
         sample_summary_csv = "samplesummary.csv"
         samples_csv = "samples.csv"
         biom_per_sample_counts = {}
+        biom_libraries = ""
+        biom_observations = ""
         with open(input.file1) as fh, open(summary_csv, 'w') as sumout, open(samples_csv, 'w') as samout, open(sample_summary_csv, 'w') as samplesum:
             bt = parse_table(fh)
+            biom_libraries = "[%s]" % ", ".join(map(str, bt.sum("sample")))
+            biom_observations = "[%s]" % ", ".join(map(str, bt.sum("observation")))
             stats = compute_counts_per_sample_stats(bt)
             biom_per_sample_counts = stats[4]
             sample_counts = list(stats[4].values())
 
             # summary
             print("Samples", len(bt.ids()), sep=",", file=sumout)
+            print("Omitted Samples", len(OMITTED), sep=",", file=sumout)
             print("OTUs", len(bt.ids(axis='observation')), sep=",", file=sumout)
             print("OTU Total Count", sum(sample_counts), sep=",", file=sumout)
             print("OTU Table Density", bt.get_table_density(), sep=",", file=sumout)
@@ -456,6 +484,7 @@ rule report:
             for k, v in sorted(stats[4].items(), key=itemgetter(1)):
                 print(k, '%1.1f' % v, sep=",", file=samout)
 
+        # stats from count files
         sample_counts = {}
 
         for sample in params.samples:
@@ -571,6 +600,141 @@ rule report:
                             }}]
                     }});
             }});
+
+            $(function() {{
+              $('#library-sizes').highcharts({{
+                chart: {{
+                  type: 'column'
+                }},
+                title: {{
+                  text: 'Library Sizes'
+                }},
+                legend: {{
+                  enabled: false
+                }},
+                credits: {{
+                  enabled: false
+                }},
+                exporting: {{
+                  enabled: false
+                }},
+                tooltip: {{}},
+                plotOptions: {{
+                  column: {{
+                      pointPadding: 0.2,
+                      borderWidth: 0
+                  }},
+                  series: {{
+                      color: '#A9A9A9'
+                  }}
+                }},
+                xAxis: {{
+                  title: {{
+                    text: 'Number of Reads (Counts)'
+                  }}
+                }},
+                yAxis: {{
+                  title: {{
+                    text: 'Number of Libraries'
+                  }}
+                }},
+                series: [{{
+                            name: 'Library',
+                            data: binData({biom_libraries})
+                        }}]
+                }});
+            }});
+
+            $(function() {{
+              $('#otu-totals').highcharts({{
+                chart: {{
+                  type: 'column'
+                }},
+                title: {{
+                  text: 'OTU Totals'
+                }},
+                legend: {{
+                  enabled: false
+                }},
+                credits: {{
+                  enabled: false
+                }},
+                exporting: {{
+                  enabled: false
+                }},
+                tooltip: {{}},
+                plotOptions: {{
+                  column: {{
+                      pointPadding: 0.2,
+                      borderWidth: 0
+                  }},
+                  series: {{
+                      color: '#A9A9A9'
+                  }}
+                }},
+                xAxis: {{
+                  title: {{
+                    text: 'Number of Reads (Counts)'
+                  }}
+                }},
+                yAxis: {{
+                  title: {{
+                    text: 'Number of OTUs'
+                  }}
+                }},
+                series: [{{
+                            name: 'Observations',
+                            data: binData({biom_observations})
+                        }}]
+                }});
+            }});
+
+            function binData(data) {{
+
+              var hData = new Array(), //the output array
+                size = data.length, //how many data points
+                bins = Math.round(Math.sqrt(size)); //determine how many bins we need
+              bins = bins > 50 ? 50 : bins; //adjust if more than 50 cells
+              var max = Math.max.apply(null, data), //lowest data value
+                min = Math.min.apply(null, data), //highest data value
+                range = max - min, //total range of the data
+                width = range / bins, //size of the bins
+                bin_bottom, //place holders for the bounds of each bin
+                bin_top;
+
+              //loop through the number of cells
+              for (var i = 0; i < bins; i++) {{
+
+                //set the upper and lower limits of the current cell
+                bin_bottom = min + (i * width);
+                bin_top = bin_bottom + width;
+
+                //check for and set the x value of the bin
+                if (!hData[i]) {{
+                  hData[i] = new Array();
+                  hData[i][0] = bin_bottom + (width / 2);
+                }}
+
+                //loop through the data to see if it fits in this bin
+                for (var j = 0; j < size; j++) {{
+                  var x = data[j];
+
+                  //adjust if it's the first pass
+                  i == 0 && j == 0 ? bin_bottom -= 1 : bin_bottom = bin_bottom;
+
+                  //if it fits in the bin, add it
+                  if (x > bin_bottom && x <= bin_top) {{
+                    !hData[i][1] ? hData[i][1] = 1 : hData[i][1]++;
+                  }}
+                }}
+              }}
+              $.each(hData, function(i, point) {{
+                if (typeof point[1] == 'undefined') {{
+                  hData[i][1] = 0;
+                }}
+              }});
+              return hData;
+            }}
             </script>
 
         .. contents:: Contents
@@ -585,8 +749,14 @@ rule report:
         .. raw:: html
 
             <div id="raw-count-plot" style="min-width: 310px; height: 500px; margin: 0 auto"></div>
+            <div>
+                <div id="library-sizes" style="width: 50%; height: 500px; margin: 0 auto; display: table-cell;"></div>
+                <div id="otu-totals" style="width: 100%; vertical-align: top; height: 500px; margin: 0 auto; display: table-cell;"></div>
+            </div>
 
-        Omitted Samples: {OMITTED}
+        Samples that were omitted due to low read count:
+
+        {omitted_samples}
 
         Output
         ------
@@ -594,10 +764,7 @@ rule report:
         Chimera Removal
         ***************
 
-        This occurs de novo during clustering and reference-based post clustering on the OTU seed
-        sequences.
-
-        Chimera database - {params.chimera_metadata}
+        {chimera_info}
 
         Biom Table
         **********
@@ -609,10 +776,9 @@ rule report:
         .. csv-table::
             :file: {sample_summary_csv}
 
-        Taxonomy was assigned to the OTU sequences at an overall cutoff of {params.tax_cutoff}%
-        and per taxonomic level from Species to Kingdom at: {params.tax_levels}.
+        Taxonomy was assigned to the OTU sequences at an overall cutoff of {params.tax_cutoff}%.
 
-        Taxonomy database - {params.tax_metadata}
+        Taxonomy database - {taxonomy_metadata}
 
         OTU Sequences
         *************
@@ -637,9 +803,7 @@ rule report:
         using the distance-based, greedy clustering method of USEARCH [6] at
         {wildcards.pid}% pairwise sequence identity among operational taxonomic unit (OTU) member
         sequences. De novo prediction of chimeric sequences was performed using USEARCH during
-        clustering. Taxonomy was assigned to OTU sequences using BLAST [7] alignments followed by
-        least common ancestor assignments across {params.tax_metadata} [8]. OTU seed sequences were
-        filtered against {params.chimera_metadata} [9] to identify chimeric OTUs using USEARCH.
+        clustering. {taxonomy_assignment} {chimera_filtering}
 
 
         References
@@ -651,9 +815,9 @@ rule report:
         4. Bushnell, B. (2014). BBMap: A Fast, Accurate, Splice-Aware Aligner. URL https://sourceforge.net/projects/bbmap/
         5. Edgar, RC (2010). Search and clustering orders of magnitude faster than BLAST, Bioinformatics 26(19), 2460-2461. doi: 10.1093/bioinformatics/btq461
         6. Edgar, RC (2013). UPARSE: highly accurate OTU sequences from microbial amplicon reads. Nat Methods.
-        7. Camacho C., Coulouris G., Avagyan V., Ma N., Papadopoulos J., Bealer K., & Madden T.L. (2008) "BLAST+: architecture and applications." BMC Bioinformatics 10:421.
-        8. {params.tax_citation}
-        9. {params.chimera_citation}
+        {algorithm_citation}
+        8. {taxonomy_citation}
+        {chimera_citation}
 
 
         All Files
@@ -664,33 +828,39 @@ rule report:
         ({wildcards.eid})::
 
             {wildcards.eid}/
-            ├── {wildcards.pid}                                 # clustering pairwise identity threshold
-            │   ├── blast
-            │   │   ├── blast_hits.txt             # raw blast hits per OTU seed seq
-            │   │   └── lca_assignments.txt        # raw lca results TSV from blast hits
-            │   ├── logs                           # output from these applications
-            │   │   ├── fasttree.log
-            │   │   ├── uchime_ref.log
-            │   │   └── utax.log
-            │   ├── OTU_aligned.fasta              # multiple alignment file of otu seed seqs
-            │   ├── OTU.biom                       # tax annotated biom (no metadata, no normalization, SILVA v123)
-            │   ├── OTU.fasta                      # otu seqs
-            │   ├── OTU_tax.fasta                  # otu seqs with tax in FASTA header
-            │   ├── OTU.tree                       # newick tree of multiple alignment
-            │   ├── OTU.txt                        # tab delimited otu table
-            │   ├── README.html                    # results report
-            │   └── utax                           # utax results using {params.alt_tax_metadata}
-            │       ├── OTU.biom
-            │       ├── OTU_tax.fasta
-            │       ├── OTU_tax.txt
-            │       └── OTU.txt
-            ├── demux
-            │   └── *.fastq                        # all of the samples that were analyzed
-            ├── logs
-            │   ├── quality_filtering_stats.txt
-            │   └── *.counts
-            ├── merged_1.fasta                     # error corrected FASTA prior to clustering into OTU seqs
-            └── merged.fastq                       # all sample reads merged into single file with updated headers
+                ├── {wildcards.pid}                                 # clustering pairwise identity threshold
+                │   ├── blast
+                │   │   ├── blast_hits.txt                  # raw blast hits per OTU seed seq
+                │   │   ├── lca_assignments.txt             # raw lca results TSV from blast hits
+                │   │   ├── OTU.biom                        # tax annotated biom (no metadata, no normalization)
+                │   │   ├── OTU_tax.fasta                   # otu seqs with tax in FASTA header
+                │   │   ├── OTU.txt                         # tab delimited otu table with taxonomy
+                │   │   └── README.html                     # results report when annotation method is 'blast'
+                │   ├── logs
+                │   │   ├── cluster_sequences.log
+                │   │   ├── fasttree.log
+                │   │   └── uniques.log
+                │   ├── OTU_aligned.fasta                   # multiple alignment file of otu seed seqs
+                │   ├── OTU.fasta                           # otu seqs without taxonomy
+                │   ├── OTU.tree                            # newick tree of multiple alignment
+                │   └── utax
+                │       ├── logs
+                │       │   └── utax.log
+                │       ├── OTU.biom                        # tax annotated biom (no metadata, no normalization)
+                │       ├── OTU_tax.fasta                   # otu seqs with tax in FASTA header
+                │       ├── OTU.txt                         # tab delimited otu table with taxonomy
+                │       ├── README.html                     # results report when annotation method is 'utax'
+                │       └── utax_hits.txt                   # raw UTAX hits per OTU seed seq
+                ├── demux
+                │   ├── *.fastq.count
+                │   └── *.fastq
+                ├── logs
+                │   ├── quality_filtering_stats.txt
+                │   └── *.count
+                ├── merged_?.fasta                          # error corrected FASTA prior to clustering into OTU seqs
+                ├── merged.fastq                            # all sample reads merged into single file with updated headers
+                └── quality_filter
+                    └── *.fastq                             # files that should have been cleaned up!
 
         """, output.html, metadata="Author: Joe Brown (joe.brown@pnnl.gov)",
         stylesheet=input.css, file1=input.file1, file2=input.file2, file3=input.file3)
