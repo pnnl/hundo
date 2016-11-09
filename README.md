@@ -10,6 +10,14 @@ conda install -c bioconda snakemake biom-format fasttree bbmap blast clustalo
 
 Unfortunately, [USEARCH](http://www.drive5.com/usearch/download.html) is currently a dependency of this protocol and it is not easily distributed.
 
+Due to the size of this repo, as reference data is included, I'm hesitant to place this within Bioconda for now.
+
+We need to clone this code:
+
+```
+git clone git@github.com:brwnj/hundo.git
+```
+
 # Usage
 
 ## Experimental Data
