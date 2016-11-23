@@ -18,18 +18,27 @@ def read_count(fastq):
 
 
 def get_samples(eid, min_reads=1000):
+    if not eid:
+        return [], []
+
     samples = set()
     omitted = set()
     input_dir = os.path.join("results", eid, "demux")
+
     for f in os.listdir(input_dir):
+
         if (f.endswith("fastq") or f.endswith("fq")) and ("_r1" in f or "_R1" in f):
+
             sample_id = f.partition(".")[0].partition("_")[0]
             count = read_count(os.path.join(input_dir, f))
+
             if count >= min_reads:
                 samples.add(sample_id)
+
             else:
                 print("Omitting sample: %s (%d reads)" % (sample_id, count), file=sys.stderr)
                 omitted.add(sample_id)
+
     return samples, omitted
 
 
@@ -73,7 +82,7 @@ def fix_fasta_tax_entry(tax, kingdom="?"):
 PROTOCOL_VERSION = "1.0"
 USEARCH_VERSION = check_output("usearch --version", shell=True).strip()
 CLUSTALO_VERSION = check_output("clustalo --version", shell=True).strip()
-SAMPLES, OMITTED = get_samples(config['eid'], config['minimum_reads'])
+SAMPLES, OMITTED = get_samples(config.get("eid", None), config.get("minimum_reads", 1000))
 # name output folder appropriately
 CLUSTER_THRESHOLD = 100 - config['clustering']['percent_of_allowable_difference']
 METHOD = config["annotation_method"]
@@ -136,7 +145,7 @@ rule quality_filter_reads:
     output:
         r1 = temp("results/{eid}/quality_filter/{sample}_R1.fastq"),
         r2 = temp("results/{eid}/quality_filter/{sample}_R2.fastq"),
-        stats = temp("results/{eid}/quality_filter/{sample}_quality_filtering_stats.txt")
+        stats = "results/{eid}/quality_filter/{sample}_quality_filtering_stats.txt"
     message: "Filtering reads using BBDuk2 to remove adapters and phiX with matching kmer length of {params.k} at a hamming distance of {params.hdist} and quality trim both ends to Q{params.quality}. Reads shorter than {params.minlength} were discarded."
     params:
         lref = config['filtering']['adapters'],
