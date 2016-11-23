@@ -12,7 +12,7 @@ chimera_filter_seed_sequences: true
 # used to fill missing taxonomy entries or convert domain to kingdom;
 # more for use in conjunction with utax ITS reference database
 kingdom: Fungi
-taxonomy_database:
+utax_database:
     fasta: ref/unite_v7/fasta/refdb.fa
     # joined read length dependent; utax taxconfs file
     trained_parameters: ref/unite_v7/taxconfs/its2.tc
