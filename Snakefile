@@ -79,7 +79,7 @@ def fix_fasta_tax_entry(tax, kingdom="?"):
     return "%s;tax=%s;" % (toks[0], new_tax)
 
 
-PROTOCOL_VERSION = "1.0"
+PROTOCOL_VERSION = "1.0.1"
 USEARCH_VERSION = check_output("usearch --version", shell=True).strip()
 CLUSTALO_VERSION = check_output("clustalo --version", shell=True).strip()
 SAMPLES, OMITTED = get_samples(config.get("eid", None), config.get("minimum_reads", 1000))
