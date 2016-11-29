@@ -531,8 +531,11 @@ rule report:
             raw_counts.append(s[1]['raw_counts'])
             filtered_counts.append(s[1]['filtered_counts'])
             merged_counts.append(s[1]['merged_counts'])
-            # read count contribution to OTUs
-            biom_counts.append(biom_per_sample_counts[s[0]])
+            try:
+                # read count contribution to OTUs
+                biom_counts.append(biom_per_sample_counts[s[0]])
+            except KeyError:
+                biom_counts.append(0)
 
         # quoted strings within brackets
         samples_str = "['%s']" % "', '".join(map(str, samps))
@@ -836,40 +839,37 @@ rule report:
         be accessed from the results directory and are organized by your experiment ID
         ({wildcards.eid})::
 
-            {wildcards.eid}/
-                ├── {wildcards.pid}                                 # clustering pairwise identity threshold
-                │   ├── blast
-                │   │   ├── blast_hits.txt                  # raw blast hits per OTU seed seq
-                │   │   ├── lca_assignments.txt             # raw lca results TSV from blast hits
-                │   │   ├── OTU.biom                        # tax annotated biom (no metadata, no normalization)
-                │   │   ├── OTU_tax.fasta                   # otu seqs with tax in FASTA header
-                │   │   ├── OTU.txt                         # tab delimited otu table with taxonomy
-                │   │   └── README.html                     # results report when annotation method is 'blast'
-                │   ├── logs
-                │   │   ├── cluster_sequences.log
-                │   │   ├── fasttree.log
-                │   │   └── uniques.log
-                │   ├── OTU_aligned.fasta                   # multiple alignment file of otu seed seqs
-                │   ├── OTU.fasta                           # otu seqs without taxonomy
-                │   ├── OTU.tree                            # newick tree of multiple alignment
-                │   └── utax
-                │       ├── logs
-                │       │   └── utax.log
-                │       ├── OTU.biom                        # tax annotated biom (no metadata, no normalization)
-                │       ├── OTU_tax.fasta                   # otu seqs with tax in FASTA header
-                │       ├── OTU.txt                         # tab delimited otu table with taxonomy
-                │       ├── README.html                     # results report when annotation method is 'utax'
-                │       └── utax_hits.txt                   # raw UTAX hits per OTU seed seq
+            {wildcards.eid}/                                 # clustering pairwise identity threshold
+                ├── blast
+                │   ├── blast_hits.txt                  # raw blast hits per OTU seed seq
+                │   ├── lca_assignments.txt             # raw lca results TSV from blast hits
+                │   ├── OTU.biom                        # tax annotated biom (no metadata, no normalization)
+                │   ├── OTU_tax.fasta                   # otu seqs with tax in FASTA header
+                │   ├── OTU.txt                         # tab delimited otu table with taxonomy
+                │   └── README.html                     # results report when annotation method is 'blast'
+                ├── logs
+                │   ├── cluster_sequences.log
+                │   ├── fasttree.log
+                │   └── uniques.log
+                ├── OTU_aligned.fasta                   # multiple alignment file of otu seed seqs
+                ├── OTU.fasta                           # otu seqs without taxonomy
+                ├── OTU.tree                            # newick tree of multiple alignment
+                ├── utax
+                │   ├── OTU.biom                        # tax annotated biom (no metadata, no normalization)
+                │   ├── OTU_tax.fasta                   # otu seqs with tax in FASTA header
+                │   ├── OTU.txt                         # tab delimited otu table with taxonomy
+                │   ├── README.html                     # results report when annotation method is 'utax'
+                │   └── utax_hits.txt                   # raw UTAX hits per OTU seed seq
                 ├── demux
                 │   ├── *.fastq.count
                 │   └── *.fastq
                 ├── logs
                 │   ├── quality_filtering_stats.txt
                 │   └── *.count
-                ├── merged_?.fasta                          # error corrected FASTA prior to clustering into OTU seqs
-                ├── merged.fastq                            # all sample reads merged into single file with updated headers
+                ├── merged_?.fasta                      # error corrected FASTA prior to clustering into OTU seqs
+                ├── merged.fastq                        # all sample reads merged into single file with updated headers
                 └── quality_filter
-                    └── *.fastq                             # files that should have been cleaned up!
+                    └── *.fastq                         # files that should have been cleaned up!
 
         """, output.html, metadata="Author: Joe Brown (joe.brown@pnnl.gov)",
         stylesheet=input.css, file1=input.file1, file2=input.file2, file3=input.file3)
