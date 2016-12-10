@@ -1,8 +1,10 @@
+[![DOI](https://zenodo.org/badge/65769600.svg)](https://zenodo.org/badge/latestdoi/65769600)
+[![bioconda-badge](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat-square)](http://bioconda.github.io)
+
+
 # Install
 
 The simplest way to do this is to grab the Python 3.5 version of [Anaconda](https://www.continuum.io/downloads), then:
-
-[![bioconda-badge](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat-square)](http://bioconda.github.io)
 
 ```
 conda install -c bioconda snakemake biom-format fasttree bbmap blast clustalo
