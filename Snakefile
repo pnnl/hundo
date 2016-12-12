@@ -79,7 +79,7 @@ def fix_fasta_tax_entry(tax, kingdom="?"):
     return "%s;tax=%s;" % (toks[0], new_tax)
 
 
-PROTOCOL_VERSION = "1.0.1"
+PROTOCOL_VERSION = "1.0.2"
 USEARCH_VERSION = check_output("usearch --version", shell=True).strip()
 CLUSTALO_VERSION = check_output("clustalo --version", shell=True).strip()
 SAMPLES, OMITTED = get_samples(config.get("eid", None), config.get("minimum_reads", 1000))
@@ -766,7 +766,7 @@ rule report:
                 <div id="otu-totals" style="width: 100%; vertical-align: top; height: 500px; margin: 0 auto; display: table-cell;"></div>
             </div>
 
-        Samples that were omitted due to low read count:
+        Samples that were omitted due to low read count (less than {params.minimum_reads} sequences):
 
         {omitted_samples}
 
@@ -871,5 +871,5 @@ rule report:
                 └── quality_filter
                     └── *.fastq                         # files that should have been cleaned up!
 
-        """, output.html, metadata="Author: Joe Brown (joe.brown@pnnl.gov)",
+        """, output.html, metadata="Author: " + config.get("author"),
         stylesheet=input.css, file1=input.file1, file2=input.file2, file3=input.file3)

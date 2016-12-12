@@ -1,3 +1,4 @@
+author: "Joe Brown (joe.brown@pnnl.gov)"
 # prefilter out any sample with less than this many starting sequences
 minimum_reads: 1000
 # either use 'blast' or 'utax'
