@@ -21,6 +21,7 @@ def get_samples(eid, min_reads=1000):
     if not eid:
         return [], []
 
+    min_reads = int(min_reads)
     samples = set()
     omitted = set()
     input_dir = os.path.join("results", eid, "demux")
