@@ -1,0 +1,11 @@
+name: hundo_env
+channels:
+    - bioconda
+dependencies:
+    - bbmap
+    - biom-format
+    - blast
+    - clustalo
+    - fasttree
+    - numpy
+    - snakemake
