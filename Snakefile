@@ -158,7 +158,7 @@ rule quality_filter_reads:
         k = config['filtering']['reference_kmer_match_length'],
         qtrim = "rl",
         minlength = config['filtering']['minimum_passing_read_length']
-    threads: 4
+    threads: config.get("threads", 1)
     shell: """bbduk2.sh -Xmx8g in={input.r1} in2={input.r2} out={output.r1} out2={output.r2} \
                   rref={params.rref} lref={params.lref} fref={params.fref} mink={params.mink} \
                   stats={output.stats} hdist={params.hdist} k={params.k} \
@@ -220,7 +220,7 @@ rule dereplicate_sequences:
     output: temp("results/{eid}/uniques.fasta")
     version: USEARCH_VERSION
     message: "Dereplicating with USEARCH"
-    threads: 22
+    threads: config.get("threads", 1)
     log: "results/{eid}/{pid}/logs/uniques.log".format(eid=config['eid'], pid=CLUSTER_THRESHOLD)
     shell: "usearch -fastx_uniques {input} -fastaout {output} -sizeout -threads {threads} -log {log}"
 
@@ -255,7 +255,7 @@ if config['chimera_filter_seed_sequences']:
         version: USEARCH_VERSION
         message: "Chimera filtering OTU seed sequences against %s" % config['chimera_database']['metadata']
         params: mode = config['filtering']['chimera_mode']
-        threads: 22
+        threads: config.get("threads", 1)
         log: "results/{eid}/{pid}/logs/uchime_ref.log"
         shell: """usearch -uchime2_ref {input.fasta} -db {input.reference} -notmatched {output.notmatched} \
                       -chimeras {output.chimeras} -strand plus -threads {threads} -mode {params.mode} -log {log}"""
@@ -277,7 +277,7 @@ if METHOD == "utax":
         version: USEARCH_VERSION
         message: "Assigning taxonomies with UTAX algorithm using USEARCH with a confidence cutoff of {params.utax_cutoff}"
         params: utax_cutoff = config['taxonomy']['prediction_confidence_cutoff']
-        threads: 22
+        threads: config.get("threads", 1)
         log: "results/{eid}/{pid}/{method}/logs/utax.log"
         shell: """usearch -utax {input.fasta} -db {input.db} -strand both -threads {threads} \
                       -fastaout {output.fasta} -utax_cutoff {params.utax_cutoff} \
@@ -317,7 +317,7 @@ else:
             P = config['taxonomy']['lca_cutoffs'],
             L = config['taxonomy']['prediction_confidence_cutoff'],
             db = config['blast_database']['fasta']
-        threads: 22
+        threads: config.get("threads", 1)
         shell: """blastn -query {input.fasta} -db {params.db} -num_alignments 50 \
                       -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore" \
                       -out {output} -num_threads {threads}"""
@@ -372,7 +372,7 @@ rule compile_counts:
         fasta = "results/{eid}/{pid}/{method}/OTU_tax.fasta"
     output: "results/{eid}/{pid}/{method}/OTU.txt"
     params: threshold = config['mapping_to_otus']['read_identity_requirement']
-    threads: 22
+    threads: config.get("threads", 1)
     shell:"""usearch -usearch_global {input.fastq} -db {input.fasta} -strand plus \
                  -id {params.threshold} -otutabout {output} -threads {threads}"""
 
@@ -391,7 +391,7 @@ rule multiple_align:
     output: "results/{eid}/{pid}/OTU_aligned.fasta"
     message: "Multiple alignment of samples using Clustal Omega"
     version: CLUSTALO_VERSION
-    threads: 1
+    threads: config.get("threads", 1)
     shell: "clustalo -i {input} -o {output} --outfmt=fasta --threads {threads} --force"
 
 
