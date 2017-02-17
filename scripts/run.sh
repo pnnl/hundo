@@ -4,7 +4,7 @@
 #SBATCH --time=180
 #SBATCH --nodes=1
 #SBATCH --ntasks=24
-#SBATCH --job-name="amplicons"
+#SBATCH --job-name="hundo"
 #SBATCH --output="%A.out"
 #SBATCH --error="%A.err"
 
@@ -20,4 +20,4 @@ usage
 
 cd /pic/projects/mint/hundo
 config=${2:-"resources/16s.config.yaml"}
-snakemake -j 24 --configfile $config --config eid=$1
+snakemake -j 24 --nolock --rerun-incomplete --configfile $config --config eid=$1
