@@ -408,6 +408,7 @@ rule report:
         file1 = "results/{eid}/{pid}/{method}/OTU.biom".format(eid=config['eid'], pid=CLUSTER_THRESHOLD, method=METHOD),
         file2 = "results/{eid}/{pid}/OTU.fasta".format(eid=config['eid'], pid=CLUSTER_THRESHOLD),
         file3 = "results/{eid}/{pid}/OTU.tree".format(eid=config['eid'], pid=CLUSTER_THRESHOLD),
+        file4 = "results/{eid}/{pid}/{method}/OTU.txt".format(eid=config['eid'], pid=CLUSTER_THRESHOLD, method=METHOD),
         raw_counts = expand("results/{eid}/logs/{sample}_R1.fastq.count", eid=config['eid'], sample=SAMPLES),
         filtered_counts = expand("results/{eid}/logs/{sample}_filtered_R1.fastq.count", eid=config['eid'], sample=SAMPLES),
         merged_counts = expand("results/{eid}/logs/{sample}_merged.fastq.count", eid=config['eid'], sample=SAMPLES),
@@ -460,7 +461,10 @@ rule report:
             chimera_filtering = ""
 
         # omitted samples bulleted list
-        omitted_samples = "".join(["- %s\n" % i for i in OMITTED])
+        if OMITTED:
+            omitted_samples = "".join(["- %s\n" % i for i in OMITTED])
+        else:
+            omitted_samples = "- No samples were omitted.\n"
 
         # stats from the biom table
         summary_csv = "stats.csv"
@@ -478,11 +482,8 @@ rule report:
             sample_counts = list(stats[4].values())
 
             # summary
-            print("Samples", len(bt.ids()), sep=",", file=sumout)
-            print("Omitted Samples", len(OMITTED), sep=",", file=sumout)
-            print("OTUs", len(bt.ids(axis='observation')), sep=",", file=sumout)
-            print("OTU Total Count", sum(sample_counts), sep=",", file=sumout)
-            print("OTU Table Density", bt.get_table_density(), sep=",", file=sumout)
+            print("Samples", "Omitted Samples", "OTUs", "OTU Total Count", "OTU Table Density", sep=",", file=sumout)
+            print(len(bt.ids()), len(OMITTED), len(bt.ids(axis='observation')), sum(sample_counts), bt.get_table_density(), sep=",", file=sumout)
 
             # sample summary within OTU table
             print("Minimum Count", stats[0], sep=",", file=samplesum)
@@ -691,8 +692,10 @@ rule report:
                   }}
                 }},
                 yAxis: {{
+                  type: 'logarithmic',
+                  minorTickInterval: 0.1,
                   title: {{
-                    text: 'Number of OTUs'
+                    text: 'log(OTU counts)'
                   }}
                 }},
                 series: [{{
@@ -750,7 +753,7 @@ rule report:
             }}
             </script>
 
-        .. contents:: Contents
+        .. contents::
             :backlinks: none
 
         Summary
@@ -758,13 +761,14 @@ rule report:
 
         .. csv-table::
             :file: {summary_csv}
+            :header-rows: 1
 
         .. raw:: html
 
-            <div id="raw-count-plot" style="min-width: 310px; height: 500px; margin: 0 auto"></div>
+            <div id="raw-count-plot" class="one-col"></div>
             <div>
-                <div id="library-sizes" style="width: 50%; height: 500px; margin: 0 auto; display: table-cell;"></div>
-                <div id="otu-totals" style="width: 100%; vertical-align: top; height: 500px; margin: 0 auto; display: table-cell;"></div>
+                <div id="library-sizes" class="two-col-left"></div>
+                <div id="otu-totals" class="two-col-right"></div>
             </div>
 
         Samples that were omitted due to low read count (less than {params.minimum_reads} sequences):
@@ -872,5 +876,9 @@ rule report:
                 └── quality_filter
                     └── *.fastq                         # files that should have been cleaned up!
 
+        Downloads
+        ---------
+
         """, output.html, metadata="Author: " + config.get("author"),
-        stylesheet=input.css, file1=input.file1, file2=input.file2, file3=input.file3)
+        stylesheet=input.css, file1=input.file1, file2=input.file2, file3=input.file3,
+        file4=input.file4)
