@@ -2,19 +2,108 @@ body {
   font-family: Helvetica, arial, sans-serif;
   font-size: 14px;
   line-height: 1.6;
-  padding-top: 10px;
+  /*padding-top: 10px;*/
   padding-bottom: 10px;
   background-color: white;
-  padding: 30px;
+  /*padding: 30px;*/
   color: #333;
+  margin: 0px;
 }
 
-body > *:first-child {
+/*body > *:first-child {
   margin-top: 0 !important;
 }
 
 body > *:last-child {
   margin-bottom: 0 !important;
+}*/
+
+body>div .section::before {
+  content:"";
+  display:block;
+  height:80px; /* fixed header height*/
+  margin:-80px 0 0; /* negative fixed header height */
+}
+
+#summary::before {
+  margin: 0;
+}
+
+#contents {
+  margin-top: 100px;
+}
+
+.topic-title {
+  font-size: 18pt;
+}
+
+body > div > .section{
+  margin-left: 22%;
+  margin-bottom: 3em;
+}
+
+div.section {
+  width: 76%;
+}
+
+#contents > p {
+  display: none;
+}
+
+#contents {
+  margin-top: 80px;
+  padding-left: 0px;
+  width: 20%;
+  background-color: #f1f1f1;
+  height: 100%; /* Full height */
+  position: fixed; /* Make it stick, even on scroll */
+  overflow: auto; /* Enable scrolling if the sidenav has too much content */
+}
+
+#contents ul {
+  list-style-type: none;
+}
+
+#contents ul > li {
+  font-size: 14pt;
+}
+
+#contents ul > li a:hover {
+  color: #151d26;
+}
+
+#contents ul > li > ul > li {
+  font-size: 12pt;
+}
+
+#summary {
+  display: inline-block;
+}
+
+h1.title {
+  margin-top: 0;
+  position: fixed;
+  z-index: 10;
+  padding: 20px;
+  color: #fff;
+  background-color: #151d26;
+  width: 100%;
+}
+
+.one-col {
+  min-width: 310px;
+  height: 500px;
+  margin: 0 auto;
+}
+
+.two-col-left {
+  width: 49%;
+  float: left;
+}
+
+.two-col-right {
+  width: 49%;
+  float: right;
 }
 
 a {
@@ -27,7 +116,7 @@ a.absent {
 }
 
 a.anchor {
-  display: block;
+  /*display: block;*/
   padding-left: 30px;
   margin-left: -30px;
   cursor: pointer;
@@ -44,11 +133,6 @@ h1, h2, h3, h4, h5, h6 {
   -webkit-font-smoothing: antialiased;
   cursor: text;
   position: relative;
-}
-
-h2:first-child, h1:first-child, h1:first-child + h2, h3:first-child, h4:first-child, h5:first-child, h6:first-child {
-  margin-top: 0;
-  padding-top: 0;
 }
 
 h1:hover a.anchor, h2:hover a.anchor, h3:hover a.anchor, h4:hover a.anchor, h5:hover a.anchor, h6:hover a.anchor {
@@ -81,12 +165,12 @@ h6 tt, h6 code {
 
 h1 {
   font-size: 28px;
-  color: black;
+  color: #151d26;
+  border-bottom: 1px solid #cccccc;
 }
 
 h2 {
   font-size: 24px;
-  border-bottom: 1px solid #cccccc;
   color: black;
 }
 
@@ -119,7 +203,7 @@ hr {
   padding: 0;
 }
 
-body > h2:first-child {
+/*body > h2:first-child {
   margin-top: 0;
   padding-top: 0;
 }
@@ -137,7 +221,7 @@ body > h1:first-child + h2 {
 body > h3:first-child, body > h4:first-child, body > h5:first-child, body > h6:first-child {
   margin-top: 0;
   padding-top: 0;
-}
+}*/
 
 a:first-child h1, a:first-child h2, a:first-child h3, a:first-child h4, a:first-child h5, a:first-child h6 {
   margin-top: 0;
@@ -152,17 +236,17 @@ li p.first {
   display: inline-block;
 }
 
-ul, ol {
+/*ul, ol {
   padding-left: 30px;
-}
+}*/
 
-ul :first-child, ol :first-child {
+/*ul :first-child, ol :first-child {
   margin-top: 0;
 }
 
 ul :last-child, ol :last-child {
   margin-bottom: 0;
-}
+}*/
 
 dl {
   padding: 0;
