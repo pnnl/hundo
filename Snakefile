@@ -437,23 +437,23 @@ rule report:
         if config["annotation_method"] == "blast":
             taxonomy_metadata = config["blast_database"]["metadata"]
             taxonomy_citation = config["blast_database"]["citation"]
-            taxonomy_assignment = ("Taxonomy was assigned to OTU sequences using BLAST [7] "
+            taxonomy_assignment = ("Taxonomy was assigned to OTU sequences using BLAST [6] "
                                    "alignments followed by least common ancestor assignments "
-                                   "across {meta} [8].").format(meta=taxonomy_metadata)
-            algorithm_citation = ('7. Camacho C., Coulouris G., Avagyan V., Ma N., '
+                                   "across {meta} [7].").format(meta=taxonomy_metadata)
+            algorithm_citation = ('6. Camacho C., Coulouris G., Avagyan V., Ma N., '
                                   'Papadopoulos J., Bealer K., & Madden T.L. (2008) "BLAST+: '
                                   'architecture and applications." BMC Bioinformatics 10:421.')
         else:
             taxonomy_metadata = config["utax_database"]["metadata"]
             taxonomy_citation = config["utax_database"]["citation"]
-            taxonomy_assignment = ("Taxonomy was assigned to OTU sequence using the UTAX [7]"
+            taxonomy_assignment = ("Taxonomy was assigned to OTU sequence using the UTAX [6]"
                                    "algorithm of USEARCH across {meta} [7]").format(meta=taxonomy_metadata)
             algorithm_citation = "7. http://drive5.com/usearch/manual/utax_algo.html"
         if config["chimera_filter_seed_sequences"]:
             chimera_info = ("This occurs *de novo* during clustering using the UCHIME algorithm and as reference-based on "
                             "the OTU seed sequences against {chimera}").format(chimera=config["chimera_database"]["metadata"])
-            chimera_citation = "9. {cite}".format(cite=config["chimera_database"]["citation"])
-            chimera_filtering = ("OTU seed sequences were filtered against {meta} [9] to identify "
+            chimera_citation = "8. {cite}".format(cite=config["chimera_database"]["citation"])
+            chimera_filtering = ("OTU seed sequences were filtered against {meta} [8] to identify "
                                  "chimeric OTUs using USEARCH.").format(meta=config["chimera_database"]["metadata"])
         else:
             chimera_info = "This occurs *de novo* during clustering using the UCHIME algorithm."
@@ -486,11 +486,8 @@ rule report:
             print(len(bt.ids()), len(OMITTED), len(bt.ids(axis='observation')), sum(sample_counts), bt.get_table_density(), sep=",", file=sumout)
 
             # sample summary within OTU table
-            print("Minimum Count", stats[0], sep=",", file=samplesum)
-            print("Maximum Count", stats[1], sep=",", file=samplesum)
-            print("Median", stats[2], sep=",", file=samplesum)
-            print("Mean", stats[3], sep=",", file=samplesum)
-            print("Standard Deviation", std(sample_counts), sep=",", file=samplesum)
+            print("Minimum Count", "Maximum Count", "Median", "Mean", "Standard Deviation", sep=",", file=samplesum)
+            print(stats[0], stats[1], stats[2], stats[3], std(sample_counts), sep=",", file=samplesum)
 
             for k, v in sorted(stats[4].items(), key=itemgetter(1)):
                 print(k, '%1.1f' % v, sep=",", file=samout)
@@ -792,6 +789,7 @@ rule report:
 
         .. csv-table::
             :file: {sample_summary_csv}
+            :header-rows: 1
 
         Taxonomy was assigned to the OTU sequences at an overall cutoff of {params.tax_cutoff}%.
 
@@ -810,15 +808,14 @@ rule report:
         Methods
         -------
 
-        Raw sequence reads were demultiplexed with using EA-Utils [3] with zero
-        mismatches allowed in the barcode sequence. Reads were quality filtered with BBDuk2 [4]
+        Reads were quality filtered with BBDuk2 [3]
         to remove adapter sequences and PhiX with matching kmer length of {params.kmer_len}
         bp at a hamming distance of {params.ham_dist}. Reads shorter than {params.min_read_len} bp
-        were discarded. Reads were merged using USEARCH [5] with a minimum length
+        were discarded. Reads were merged using USEARCH [4] with a minimum length
         threshold of {params.min_merge_len} bp and maximum error rate of {params.max_ee}%. Sequences
         were dereplicated (minimum sequence abundance of {params.min_seq_abundance}) and clustered
-        using the distance-based, greedy clustering method of USEARCH [6] at
-        {wildcards.pid}% pairwise sequence identity among operational taxonomic unit (OTU) member
+        using the distance-based, greedy clustering method of USEARCH [5] at
+        {CLUSTER_THRESHOLD}% pairwise sequence identity among operational taxonomic unit (OTU) member
         sequences. De novo prediction of chimeric sequences was performed using USEARCH during
         clustering. {taxonomy_assignment} {chimera_filtering}
 
@@ -828,12 +825,11 @@ rule report:
 
         1. Sievers F, Wilm A, Dineen D, Gibson TJ, Karplus K, Li W, Lopez R, McWilliam H, Remmert M, Söding J, et al. 2011. Fast, scalable generation of high-quality protein multiple sequence alignments using Clustal Omega. Mol Syst Biol 7: 539
         2. Price MN, Dehal PS, Arkin AP. 2010. FastTree 2--approximately maximum-likelihood trees for large alignments. ed. A.F.Y. Poon. PLoS One 5: e9490
-        3. Erik Aronesty (2013). TOBioiJ : "Comparison of Sequencing Utility Programs", DOI:10.2174/1875036201307010001
-        4. Bushnell, B. (2014). BBMap: A Fast, Accurate, Splice-Aware Aligner. URL https://sourceforge.net/projects/bbmap/
-        5. Edgar, RC (2010). Search and clustering orders of magnitude faster than BLAST, Bioinformatics 26(19), 2460-2461. doi: 10.1093/bioinformatics/btq461
-        6. Edgar, RC (2013). UPARSE: highly accurate OTU sequences from microbial amplicon reads. Nat Methods.
+        3. Bushnell, B. (2014). BBMap: A Fast, Accurate, Splice-Aware Aligner. URL https://sourceforge.net/projects/bbmap/
+        4. Edgar, RC (2010). Search and clustering orders of magnitude faster than BLAST, Bioinformatics 26(19), 2460-2461. doi: 10.1093/bioinformatics/btq461
+        5. Edgar, RC (2013). UPARSE: highly accurate OTU sequences from microbial amplicon reads. Nat Methods.
         {algorithm_citation}
-        8. {taxonomy_citation}
+        7. {taxonomy_citation}
         {chimera_citation}
 
 
