@@ -178,18 +178,33 @@ rule combine_filtering_stats:
     shell: "cat {input} > {output}"
 
 
-rule merge_reads:
-    input:
-        r1 = "results/{eid}/quality_filter/{sample}_R1.fastq",
-        r2 = "results/{eid}/quality_filter/{sample}_R2.fastq"
-    output: temp("results/{eid}/demux/{sample}_merged.fastq")
-    version: USEARCH_VERSION
-    message: "Merging paired-end reads with USEARCH at a minimum merge length of {params.minimum_merge_length}"
-    params: minimum_merge_length = config['merging']['minimum_merge_length']
-    log: "results/{eid}/{pid}/logs/fastq_mergepairs.log".format(eid=config['eid'], pid=CLUSTER_THRESHOLD)
-    shell: """usearch -fastq_mergepairs {input.r1} -relabel @ -sample {wildcards.sample} \
-                  -fastq_minmergelen {params.minimum_merge_length} \
-                  -fastqout {output} -log {log}"""
+# makes default option 'vsearch'
+if config["merging"].get("algorithm", "vsearch"):
+    rule merge_reads:
+        input:
+        output:
+        # version: write vsearch version method
+        params:
+            minimum_merge_length = config["merging"].get("minimum_merge_length", 100)
+        log:
+            "results/{eid}/{pid}/logs/fastq_mergepairs.log".format(eid=config['eid'], pid=CLUSTER_THRESHOLD)
+        shell:
+            # need to ensure headers are compatible with all downstream trajectories (or limit those trajectories)
+            """vsearch command"""
+
+else:
+    rule merge_reads:
+        input:
+            r1 = "results/{eid}/quality_filter/{sample}_R1.fastq",
+            r2 = "results/{eid}/quality_filter/{sample}_R2.fastq"
+        output: temp("results/{eid}/demux/{sample}_merged.fastq")
+        version: USEARCH_VERSION
+        message: "Merging paired-end reads with USEARCH at a minimum merge length of {params.minimum_merge_length}"
+        params: minimum_merge_length = config['merging']['minimum_merge_length']
+        log: "results/{eid}/{pid}/logs/fastq_mergepairs.log".format(eid=config['eid'], pid=CLUSTER_THRESHOLD)
+        shell: """usearch -fastq_mergepairs {input.r1} -relabel @ -sample {wildcards.sample} \
+                      -fastq_minmergelen {params.minimum_merge_length} \
+                      -fastqout {output} -log {log}"""
 
 
 rule count_joined_reads:
@@ -205,37 +220,46 @@ rule combine_merged_reads:
     shell: "cat {input} > {output}"
 
 
-rule fastq_filter:
-    input: "results/{eid}/merged.fastq"
-    output: "results/{eid}/merged_%s.fasta" % str(config['filtering']['maximum_expected_error'])
-    version: USEARCH_VERSION
-    message: "Filtering FASTQ with USEARCH with an expected maximum error rate of {params.maxee}"
-    params: maxee = config['filtering']['maximum_expected_error']
-    log: "results/{eid}/{pid}/logs/fastq_filter.log".format(eid=config['eid'], pid=CLUSTER_THRESHOLD)
-    shell: "usearch -fastq_filter {input} -fastq_maxee {params.maxee} -fastaout {output} -log {log}"
+if config[]...
+
+else:
+    rule fastq_filter:
+        input: "results/{eid}/merged.fastq"
+        output: "results/{eid}/merged_%s.fasta" % str(config['filtering']['maximum_expected_error'])
+        version: USEARCH_VERSION
+        message: "Filtering FASTQ with USEARCH with an expected maximum error rate of {params.maxee}"
+        params: maxee = config['filtering']['maximum_expected_error']
+        log: "results/{eid}/{pid}/logs/fastq_filter.log".format(eid=config['eid'], pid=CLUSTER_THRESHOLD)
+        shell: "usearch -fastq_filter {input} -fastq_maxee {params.maxee} -fastaout {output} -log {log}"
 
 
-rule dereplicate_sequences:
-    input: rules.fastq_filter.output
-    output: temp("results/{eid}/uniques.fasta")
-    version: USEARCH_VERSION
-    message: "Dereplicating with USEARCH"
-    threads: config.get("threads", 1)
-    log: "results/{eid}/{pid}/logs/uniques.log".format(eid=config['eid'], pid=CLUSTER_THRESHOLD)
-    shell: "usearch -fastx_uniques {input} -fastaout {output} -sizeout -threads {threads} -log {log}"
+if config[]...
+
+else:
+    rule dereplicate_sequences:
+        input: rules.fastq_filter.output
+        output: temp("results/{eid}/uniques.fasta")
+        version: USEARCH_VERSION
+        message: "Dereplicating with USEARCH"
+        threads: config.get("threads", 1)
+        log: "results/{eid}/{pid}/logs/uniques.log".format(eid=config['eid'], pid=CLUSTER_THRESHOLD)
+        shell: "usearch -fastx_uniques {input} -fastaout {output} -sizeout -threads {threads} -log {log}"
 
 
-rule cluster_sequences:
-    input: "results/{eid}/uniques.fasta"
-    output: temp("results/{eid}/{pid}/OTU_unfiltered.fasta")
-    version: USEARCH_VERSION
-    message: "Clustering sequences with USEARCH where OTUs have a minimum size of {params.minsize} and where the maximum difference between an OTU member sequence and the representative sequence of that OTU is {params.otu_radius_pct}%"
-    params:
-        minsize = config['clustering']['minimum_sequence_abundance'],
-        otu_radius_pct = config['clustering']['percent_of_allowable_difference']
-    log: "results/{eid}/{pid}/logs/cluster_sequences.log"
-    shell: """usearch -cluster_otus {input} -minsize {params.minsize} -otus {output} -relabel OTU_ \
-                  -otu_radius_pct {params.otu_radius_pct} -log {log}"""
+if config[]:
+
+else:
+    rule cluster_sequences:
+        input: "results/{eid}/uniques.fasta"
+        output: temp("results/{eid}/{pid}/OTU_unfiltered.fasta")
+        version: USEARCH_VERSION
+        message: "Clustering sequences with USEARCH where OTUs have a minimum size of {params.minsize} and where the maximum difference between an OTU member sequence and the representative sequence of that OTU is {params.otu_radius_pct}%"
+        params:
+            minsize = config['clustering']['minimum_sequence_abundance'],
+            otu_radius_pct = config['clustering']['percent_of_allowable_difference']
+        log: "results/{eid}/{pid}/logs/cluster_sequences.log"
+        shell: """usearch -cluster_otus {input} -minsize {params.minsize} -otus {output} -relabel OTU_ \
+                      -otu_radius_pct {params.otu_radius_pct} -log {log}"""
 
 
 # cluster
@@ -403,6 +427,8 @@ rule newick_tree:
     shell: "FastTree -nt -gamma -spr 4 -log {log} -quiet {input} > {output}"
 
 
+# TODO: will have to undergo major changes in the report and citations sections; will
+# likely just convert to a simple bulleted list style format
 rule report:
     input:
         file1 = "results/{eid}/{pid}/{method}/OTU.biom".format(eid=config['eid'], pid=CLUSTER_THRESHOLD, method=METHOD),
