@@ -7,3 +7,6 @@ __pycache__
 lca
 SLV_123_SSU.fasta
 SLV_123_SSU.tax
+*.nhr
+*.nin
+*.nsq
