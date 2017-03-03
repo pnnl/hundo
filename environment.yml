@@ -1,6 +1,9 @@
 name: hundo_env
 channels:
     - bioconda
+    - r
+    - defaults
+    - conda-forge
 dependencies:
     - python
     - bbmap
