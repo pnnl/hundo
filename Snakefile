@@ -692,7 +692,7 @@ rule report:
                   type: 'logarithmic',
                   minorTickInterval: 0.1,
                   title: {{
-                    text: 'log(OTU counts)'
+                    text: 'log(Number of OTUs)'
                   }}
                 }},
                 series: [{{
