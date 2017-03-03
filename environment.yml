@@ -2,6 +2,7 @@ name: hundo_env
 channels:
     - bioconda
 dependencies:
+    - python
     - bbmap
     - biom-format
     - blast
@@ -9,3 +10,4 @@ dependencies:
     - fasttree
     - numpy
     - snakemake
+    - vsearch

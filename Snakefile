@@ -80,13 +80,33 @@ def fix_fasta_tax_entry(tax, kingdom="?"):
     return "%s;tax=%s;" % (toks[0], new_tax)
 
 
+def validate_config(config):
+    error = False
+    if not "quality_control" in config:
+        print("message", file=sys.stderr)
+        error = True
+    try:
+        if not "adapters" in config["quality_control"]:
+            print("no adapters")
+            error = True
+    except KeyError:
+        error = True
+
+    if not "blast_database" in config:
+
+    if os.path.exists(config["taxonomy_reference"]["fasta"])
+
+
+validate_config(config)
+
+
 PROTOCOL_VERSION = "1.1.0"
 USEARCH_VERSION = check_output("usearch --version", shell=True).decode("utf-8").strip()
 VSEARCH_VERSION = check_output("vsearch", shell=True).decode("utf-8").strip().split(",")[0]
 CLUSTALO_VERSION = check_output("clustalo --version", shell=True).decode("utf-8").strip()
 SAMPLES, OMITTED = get_samples(config.get("eid", None), config.get("minimum_reads", 1000))
 # name output folder appropriately
-CLUSTER_THRESHOLD = 100 - config["clustering"]["percent_of_allowable_difference"]
+CLUSTER_THRESHOLD = 100 - config["clustering"].get("percent_of_allowable_difference", 3)
 METHOD = "blast" if config.get("program", "vsearch") == "vsearch" else config.get("annotation_method", "blast")
 
 
