@@ -80,7 +80,7 @@ def fix_fasta_tax_entry(tax, kingdom="?"):
     return "%s;tax=%s;" % (toks[0], new_tax)
 
 
-PROTOCOL_VERSION = "1.0.3"
+PROTOCOL_VERSION = "1.0.4"
 USEARCH_VERSION = check_output("usearch --version", shell=True).strip()
 CLUSTALO_VERSION = check_output("clustalo --version", shell=True).strip()
 SAMPLES, OMITTED = get_samples(config.get("eid", None), config.get("minimum_reads", 1000))
@@ -158,7 +158,7 @@ rule quality_filter_reads:
         k = config['filtering']['reference_kmer_match_length'],
         qtrim = "rl",
         minlength = config['filtering']['minimum_passing_read_length']
-    threads: config.get("threads", 1)
+    threads: config.get("threads_small", config.get("threads", 1))
     shell: """bbduk2.sh -Xmx8g in={input.r1} in2={input.r2} out={output.r1} out2={output.r2} \
                   rref={params.rref} lref={params.lref} fref={params.fref} mink={params.mink} \
                   stats={output.stats} hdist={params.hdist} k={params.k} \

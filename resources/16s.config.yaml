@@ -2,6 +2,7 @@ author: "Joe Brown (joe.brown@pnnl.gov)"
 # prefilter out any sample with less than this many starting sequences
 minimum_reads: 200
 threads: 24
+threads_small: 4
 # either use 'blast' or 'utax'
 # with blast and SILVA, more sequences will be annotated with reasonable
 # confidence
