@@ -6,17 +6,26 @@
 
 # Install
 
-The simplest way to do this is to grab the Python 3.5 version of [Anaconda](https://www.continuum.io/downloads), then:
+The simplest way to do this is to grab the Python 3 version of [Anaconda](https://www.continuum.io/downloads), then add the prerequisite channels:
 
 ```
-conda install -c bioconda snakemake biom-format fasttree bbmap blast clustalo
+conda config --add channels conda-forge
+conda config --add channels defaults
+conda config --add channels r
+conda config --add channels bioconda
+```
+
+And install dependencies
+
+```
+conda install python=3.5 snakemake biom-format fasttree bbmap blast clustalo
 ```
 
 Unfortunately, [USEARCH](http://www.drive5.com/usearch/download.html) is currently a dependency of this protocol and it is not easily distributed.
 
 Due to the size of this repo, as reference data is included, I'm hesitant to place this within Bioconda for now.
 
-We need to clone this code:
+Finally, clone this code:
 
 ```
 git clone git@github.com:brwnj/hundo.git
@@ -43,6 +52,8 @@ tree results
 ```
 
 It's important that sample names end with some form of underscore then read identifier, e.g. _R1.fastq or _r1.fastq.
+
+Sample names should not include underscores.
 
 ## Preparing Databases
 
