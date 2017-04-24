@@ -85,6 +85,12 @@ Running the same command with `eid` defined in the configuration file would look
 snakemake --configfile our-new-config.yaml
 ```
 
+We can use conda to deploy isolated software environments for each rule, by passing the `--use-conda` flag
+
+```
+snakemake --configfile our-new-config.yaml --use-conda
+```
+
 # Results
 
 Using the above example, our results will be written to:
