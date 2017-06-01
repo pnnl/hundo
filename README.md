@@ -28,7 +28,7 @@ Due to the size of this repo, as reference data is included, I'm hesitant to pla
 Finally, clone this code:
 
 ```
-git clone git@github.com:pnnl/hundo.git
+git clone https://github.com/pnnl/hundo.git
 ```
 
 # Usage
