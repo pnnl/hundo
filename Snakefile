@@ -12,7 +12,7 @@ def read_count(fastq):
             check_output("awk '{n++}END{print n/4}' %s > %s" % (fastq, fastq + '.count'), shell=True)
         with open(count_file) as fh:
             for line in fh:
-                total = int(line.strip())
+                total = int(float(line.strip()))
                 break
     return total
 
@@ -80,7 +80,7 @@ def fix_fasta_tax_entry(tax, kingdom="?"):
     return "%s;tax=%s;" % (toks[0], new_tax)
 
 
-PROTOCOL_VERSION = "1.0.4"
+PROTOCOL_VERSION = "1.0.5"
 USEARCH_VERSION = check_output("usearch --version", shell=True).strip()
 CLUSTALO_VERSION = check_output("clustalo --version", shell=True).strip()
 SAMPLES, OMITTED = get_samples(config.get("eid", None), config.get("minimum_reads", 1000))
@@ -502,21 +502,21 @@ rule report:
                 if "%s_R1.fastq.count" % sample in f:
                     with open(f) as fh:
                         for line in fh:
-                            sample_counts[sample]['raw_counts'] = int(line.strip())
+                            sample_counts[sample]['raw_counts'] = int(float(line.strip()))
                             break
             # filtered count
             for f in input.filtered_counts:
                 if "%s_filtered_R1.fastq.count" % sample in f:
                     with open(f) as fh:
                         for line in fh:
-                            sample_counts[sample]['filtered_counts'] = int(line.strip())
+                            sample_counts[sample]['filtered_counts'] = int(float(line.strip()))
                             break
             # merged count
             for f in input.merged_counts:
                 if "%s_merged.fastq.count" % sample in f:
                     with open(f) as fh:
                         for line in fh:
-                            sample_counts[sample]['merged_counts'] = int(line.strip())
+                            sample_counts[sample]['merged_counts'] = int(float(line.strip()))
                             break
 
         raw_counts = []
