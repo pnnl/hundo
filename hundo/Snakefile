@@ -1,0 +1,889 @@
+import hashlib
+import os
+import sys
+from snakemake.logging import logger
+from snakemake.utils import report
+from subprocess import check_output
+
+
+def get_sample_files(config):
+    fastq_dir = config.get("fastq_dir")
+    if not fastq_dir:
+        logger.error("'fastq_dir' has not been set -- this directory should contain your input FASTQs")
+        sys.exit(1)
+
+    print("Finding samples in %s" % fastq_dir)
+
+    samples = dict()
+    seen = set()
+    for fname in os.listdir(fastq_dir):
+        if ".fastq" in fname or ".fq" in fname:
+
+            sample_id = fname.partition(".fastq")[0]
+            if ".fq" in sample_id:
+                sample_id = fname.partition(".fq")[0]
+            sample_id = sample_id.replace("_R1", "").replace("_r1", "").replace("_R2", "").replace("_r2", "")
+            sample_id = sample_id.replace("_", "-").replace(" ", "-")
+
+            fq_path = os.path.join(fastq_dir, fname)
+            if fq_path in seen: continue
+
+            if "_R1" in fname or "_r1" in fname:
+                r2_path = os.path.join(fastq_dir, fname.replace("_R1", "_R2").replace("_r1", "_r2"))
+                if r2_path == fq_path:
+                    logger.error("Unable to locate R2 for %s. Exiting." % fq_path)
+                    sys.exit(1)
+                if not os.path.exists(r2_path):
+                    logger.error("R1 path was found; R2 [%s] was not. Exiting." % r2_path)
+                    sys.exit(1)
+                seen.add(r2_path)
+                fastq_paths = {"r1": fq_path, "r2": r2_path}
+
+            elif "_R2" in fname or "_r2" in fname:
+                r1_path = os.path.join(fastq_dir, fname.replace("_R2", "_R1").replace("_r2", "_r1"))
+                if r1_path == fq_path:
+                    logger.error("Unable to locate R1 for %s. Exiting." % fq_path)
+                    sys.exit(1)
+                if not os.path.exists(r1_path):
+                    logger.error("R2 path was found; R1 [%s] was not. Exiting." % r1_path)
+                    sys.exit(1)
+                seen.add(r1_path)
+                fastq_paths = {"r1": r1_path, "r2": fq_path}
+
+            else:
+                logger.error("Unable to determine read index for [%s] as it is missing '_R1' or '_R2' designation. Exiting." % fname)
+                sys.exit(1)
+
+            if sample_id in samples:
+                logger.warning("Duplicate sample %s was found after renaming; skipping..." % sample_id)
+                continue
+
+            samples[sample_id] = fastq_paths
+    return samples
+
+
+def get_cluster_sequences_input(wildcards):
+    return "tmp/uniques_uchime_denovo.fasta" if config.get("denova_chimera_filter") else "tmp/uniques.fasta"
+
+
+def get_run_reference_chimera_filter_inputs(wildcards):
+    if os.path.exists(config.get("reference_chimera_filter")):
+        return {"fasta": "OTU_unfiltered.fasta", "db": config.get("reference_chimera_filter")}
+    # set to 'true'
+    else:
+        return {"fasta": "OTU_unfiltered.fasta", "db": REFFASTA}
+
+
+def fix_tax_entry(tax, kingdom="?"):
+    """
+    >>> t = "p:Basidiomycota,c:Tremellomycetes,o:Tremellales,f:Tremellales_fam_Incertae_sedis,g:Cryptococcus"
+    >>> fix_tax_entry(t, "Fungi")
+    'k__Fungi,p__Basidiomycota,c__Tremellomycetes,o__Tremellales,f__Tremellales_fam_Incertae_sedis,g__Cryptococcus,s__?'
+    """
+    if tax == "" or tax == "*":
+        taxonomy = dict()
+    else:
+        taxonomy = dict(x.split(":") for x in tax.split(","))
+    if "d" in taxonomy and not "k" in taxonomy:
+        taxonomy["k"] = taxonomy["d"]
+    else:
+        taxonomy["k"] = kingdom
+
+    new_taxonomy = []
+    for idx in "kpcofgs":
+        new_taxonomy.append("%s__%s" % (idx, taxonomy.get(idx, "?")))
+    return ",".join(new_taxonomy)
+
+
+def fix_fasta_tax_entry(tax, kingdom="?"):
+    """
+    >>> t = ">OTU_7;tax=p:Basidiomycota,c:Microbotryomycetes,o:Sporidiobolales,f:Sporidiobolales_fam_Incertae_sedis,g:Rhodotorula;"
+    >>> fix_fasta_tax_entry(t)
+    '>OTU_7;tax=k__?,p__Basidiomycota,c__Microbotryomycetes,o__Sporidiobolales,f__Sporidiobolales_fam_Incertae_sedis,g__Rhodotorula,s__?;'
+    """
+    toks = tax.split(";")
+    otu = toks[0]
+    tax_piece = toks[1]
+    if not tax_piece.startswith("tax"):
+        raise ValueError
+    sequence_tax = tax_piece.split("=")[1]
+    new_tax = fix_tax_entry(sequence_tax, kingdom)
+    return "%s;tax=%s;" % (toks[0], new_tax)
+
+
+def md5(fname):
+    # https://stackoverflow.com/questions/3431825/generating-an-md5-checksum-of-a-file
+    hash_md5 = hashlib.md5()
+    if not os.path.exists(fname):
+        return None
+    with open(fname, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
+
+def validate_config(config):
+    valid = True
+    if not config.get("blast_fasta"):
+        logger.critical("A BLAST reference FASTA file must be specified under option 'blast_fasta'")
+        valid = False
+    if config.get("blast_fasta") and not os.path.exists(config.get("blast_fasta")):
+        logger.critical("The BLAST reference specified [%s] does not exist" % config.get("blast_fasta"))
+        valid = False
+    if not config.get("blast_taxonomy"):
+        logger.critical("A BLAST reference taxonomy file must be specified under option 'blast_taxonomy'")
+        valid = False
+    if config.get("blast_taxonomy") and not os.path.exists(config.get("blast_taxonomy")):
+        logger.critical("The BLAST reference taxonomy specified [%s] does not exist" % config.get("blast_taxonomy"))
+        valid = False
+    if not valid:
+        sys.exit(1)
+
+
+validate_config(config)
+
+PROTOCOL_VERSION = check_output("hundo --version", shell=True).decode("utf-8").strip()
+VSEARCH_VERSION = check_output("vsearch", shell=True).decode("utf-8").strip().split(",")[0]
+CLUSTALO_VERSION = check_output("clustalo --version", shell=True).strip()
+SAMPLES = get_samples(config)
+# name output folder appropriately
+CLUSTER_THRESHOLD = 100 - config.get(int("percent_of_allowable_difference"), 3)
+
+REFERENCES = {"greengenes.fasta.nhr": "200f1b4356e59be524525e4ca83cefc1",
+              "greengenes.fasta.nin": "f41470ebc95c21f13b54f7b127ebe2ad",
+              "greengenes.fasta.nsq": "150b00866a87f44c8b33871be7cc6b98",
+              "greengenes.map": "cb49d30e2a00476f8bdaaa3eaec693ef",
+              "greengenes.tre": "b3a369edde911bf0aa848a842f736fce",
+              "silvamod128.fasta.nhr": "99d9b6817a9c6a0249fbb32a60e725ae",
+              "silvamod128.fasta.nin": "25d8d6587123aa7dbaabaa1299e481cc",
+              "silvamod128.fasta.nsq": "7e12efc4ab9019c9d79809861922a001",
+              "silvamod128.map": "00500c7f215a89a3240c907af4f75f33",
+              "silvamod128.tre": "340864d9d32e8561f75ec0b0a9a6c3d1",
+              "unite.fasta.nhr": "be55d7142d812abfe508bec8038dbbe8",
+              "unite.fasta.nin": "f8c3748280ee07cf28983ba8ec9df601",
+              "unite.fasta.nsq": "fe952b51a5a97445221f1287699cf33b",
+              "unite.map": "8f5b11fe1074109627e010418ffb467b",
+              "unite.tre": "3e1c586184e91a3cfa10a19c9855169c"}
+REF = [k for k in REFERENCES.keys() if k.startswith(config.get("reference_database", "silva"))]
+REFFASTA = [os.path.join(config.get("database_dir", "."), i) for i in REF if ".fasta" in i][0].rpartition(".")[0]
+REFMAP = [os.path.join(config.get("database_dir", "."), i) for i in REF if i.endswith(".map")][0]
+REFTRE = [os.path.join(config.get("database_dir", "."), i) for i in REF if i.endswith(".tre")][0]
+
+
+rule all:
+    input:
+        # expand("%s/{database}" % config.get("database_dir", "."), database=REF),
+        expand("README.html"),
+        expand("PROTOCOL_VERSION")
+
+
+rule print_protocol_version:
+    output:
+        "PROTOCOL_VERSION"
+    shell:
+        "hundo --version > {output}"
+
+
+rule download_reference_data:
+    output:
+        "%s/{filename}" % config.get("database_dir", ".")
+    run:
+        shell("curl 'https://zenodo.org/record/808727/files/{wildcards.filename}' -s > {output}")
+        if not REFERENCES["{wildcards.filename}"] == md5(output[0]):
+            raise OSError(2, "Invalid checksum", output[0])
+
+
+rule create_fasta_from_reference:
+    input:
+        expand("%s/{database}" % config.get("database_dir", "."), database=REF)
+    output:
+        REFFASTA
+    shell:
+        """blastdbcmd -db {output} -outfmt %f -entry all -out {output}"""
+
+
+rule make_blast_db:
+    input:
+        config["blast_fasta"]
+    output:
+        expand(config["blast_fasta"] + ".{idx}", idx=['nhr', 'nin', 'nsq'])
+    shell:
+        "makeblastdb -in {input} -dbtype nucl"
+
+
+rule count_raw_reads:
+    input:
+        lambda wc: SAMPLES[wc.sample]["r1"]
+    output:
+        "logs/{sample}_R1.fastq.count"
+    shell:
+        "awk '{{n++}}END{{print int(n/4)}}' {input} > {output}"
+
+
+rule trim_and_filter_reads:
+    input:
+        unpack(lambda wc: SAMPLES[wc.sample])
+    output:
+        r1 = temp("tmp/{sample}_R1.fastq"),
+        r2 = temp("tmp/{sample}_R2.fastq"),
+        stats = "logs/{sample}_quality_filtering_stats.txt"
+    benchmark:
+        "logs/benchmarks/quality_filter/{sample}.txt"
+    params:
+        lref = "lref=%s" % config.get("filter_adapters") if config.get("filter_adapters") else "",
+        rref = "rref=%s" % config.get("filter_adapters") if config.get("filter_adapters") else "",
+        fref = "fref=%s" % config.get("filter_contaminants") if config.get("filter_contaminants") else "",
+        mink = config.get("reduced_kmer_min", 8),
+        trimq = config.get("minimum_base_quality", 10),
+        hdist = config.get("allowable_kmer_mismatches", 1),
+        k = config.get("reference_kmer_match_length", 31),
+        qtrim = config.get("qtrim", "rl"),
+        minlength = config.get("minimum_passing_read_length", 100)
+    log:
+        "logs/{sample}_quality_filter.log"
+    threads:
+        config.get("threads", 1)
+    shell:
+        """bbduk2.sh in={input.r1} in2={input.r2} out={output.r1} out2={output.r2} \
+               {params.rref} {params.lref} {params.fref} mink={params.mink} qout=33 \
+               stats={output.stats} hdist={params.hdist} k={params.k} \
+               trimq={params.trimq} qtrim={params.qtrim} threads={threads} \
+               minlength={params.minlength} minbasefrequency={params.minbasefrequency} \
+               interleaved={params.interleaved} overwrite=true 2> {log}"""
+
+
+rule count_filtered_reads:
+    input:
+        "tmp/{sample}_R1.fastq"
+    output:
+        "logs/{sample}_filtered_R1.fastq.count"
+    shell:
+        "awk '{{n++}}END{{print int(n/4)}}' {input} > {output}"
+
+
+rule merge_reads:
+    input:
+        r1 = "tmp/{sample}_R1.fastq",
+        r2 = "tmp/{sample}_R2.fastq"
+    output:
+        temp("tmp/{sample}_merged.fastq")
+    version:
+        VSEARCH_VERSION
+    params:
+        minimum_merge_length = config.get("minimum_merge_length", 150)
+    log:
+        "logs/{sample}_merge_reads.log"
+    shell:
+        """vsearch -fastq_mergepairs {input.r1} -reverse {input.r2} \
+               -label_suffix \;sample={wildcards.sample}\; \
+               -fastq_minmergelen {params.minimum_merge_length} \
+               -fastqout {output} -log {log}"""
+
+
+rule count_merged_reads:
+    input:
+        "tmp/{sample}_merged.fastq"
+    output:
+        "logs/{sample}_merged.fastq.count"
+    shell:
+        "awk '{{n++}}END{{print int(n/4)}}' {input} > {output}"
+
+
+rule combine_merged_reads:
+    input:
+        expand("tmp/{sample}_merged.fastq", sample=SAMPLES)
+    output:
+        "merged.fastq.gz"
+    shell:
+        "cat {input} | gzip {output}"
+
+
+rule filter_merged_fastq:
+    input:
+        "results/{eid}/merged.fastq.gz"
+    output:
+        "results/{eid}/merged_EE%s.fasta" % str(config.get("maximum_expected_error", 1))
+    version:
+        VSEARCH_VERSION
+    params:
+        maxee = config.get("maximum_expected_error", 1)
+    log:
+        "logs/fastq_filter.log"
+    shell:
+        """vsearch -fastq_filter {input} -fastaout {output} \
+               -fastq_maxee {params.maxee} -log {log}"""
+
+
+rule compress_filtered_fasta:
+    input:
+        "results/{eid}/merged_EE%s.fasta" % str(config.get("maximum_expected_error", 1))
+    output:
+        "results/{eid}/merged_EE%s.fasta.gz" % str(config.get("maximum_expected_error", 1))
+    shell:
+        "gzip -f {input}"
+
+
+rule dereplicate_sequences:
+    input:
+        "results/{eid}/merged_EE%s.fasta.gz" % str(config.get("maximum_expected_error", 1))
+    output:
+        temp("tmp/uniques.fasta")
+    version:
+        VSEARCH_VERSION
+    log:
+        "logs/uniques.log"
+    threads:
+        config.get("threads", 1)
+    shell:
+        """vsearch --derep_fulllength {input} --output {output} --sizeout \
+               --threads {threads} -log {log}"""
+
+
+if config.get("denovo_chimera_filter", True):
+    rule run_denovo_chimera_filter:
+        input:
+            "tmp/uniques.fasta"
+        output:
+            temp("tmp/uniques_uchime_denovo.fasta")
+        version:
+            VSEARCH_VERSION
+        log:
+            "logs/uniques_uchime_denovo.log"
+        shell:
+            """vsearch --uchime_denovo {input} --nonchimeras {output} --strand plus --sizein \
+                   --sizeout --log {log}"""
+
+
+rule cluster_sequences:
+    input:
+        get_cluster_sequences_input
+    output:
+        temp("OTU_unfiltered.fasta")
+    version:
+        VSEARCH_VERSION
+    params:
+        minsize = config.get("minimum_sequence_abundance", 2),
+        otu_id_pct = (100 - float(config.get("percent_of_allowable_difference", 3))) / 100.
+    log:
+        "logs/cluster_sequences.log"
+    shell:
+        """vsearch --cluster_size {input} --centroids {output} --minsize {params.minsize} \
+               --relabel OTU_ --id {params.otu_id_pct} --log {log}"""
+
+
+if config.get("reference_chimera_filter", False):
+    rule run_reference_chimera_filter:
+        input:
+            unpack(get_run_reference_chimera_filter_inputs)
+        output:
+            "OTU.fasta"
+        shell:
+            """vsearch --uchime_ref {input.fasta} --nonchimeras {output} --strand plus \
+                   --sizein --sizeout --db {input.db}"""
+else:
+    rule run_reference_chimera_filter:
+        input:
+            "OTU_unfiltered.fasta"
+        output:
+            "OTU.fasta"
+        shell:
+            "cp {input} {output}"
+
+
+rule run_blast:
+    input:
+        fasta = "OTU.fasta",
+        db = rules.make_blast_db.output
+    output:
+        "blast/blast_hits.txt"
+    params:
+        db = REFFASTA
+    threads:
+        config.get("threads", 1)
+    shell:
+        """blastn -query {input.fasta} -db {params.db} -num_alignments 75 -outfmt 6 \
+               -out {output} -num_threads {threads}"""
+
+
+rule compute_lca:
+    input:
+        rules.blast.output
+    output:
+        "OTU_tax.fasta"
+        "tax.tab"
+    params:
+        min_score = config.get("blast_minimum_bitscore", 100),
+        top_fraction = config.get("blast_top_fraction", 0.95)
+    shell:
+        """hundo lca --min-score {params.min_score} --top-fraction {params.top_fraction} \
+               {input.fasta} {input.hits} {map} {tre} {output.fasta} {output.tab}"""
+
+
+rule compile_counts:
+    input:
+        fastq = rules.combine_merged_reads.output,
+        fasta = "OTU_tax.fasta"
+    output:
+        "OTU.txt"
+    params:
+        threshold = config.get("read_identity_requirement", 0.97)
+    threads:
+        config.get("threads", 1)
+    shell:
+        """vsearch --usearch_global {input.fastq} --db {input.fasta} --strand plus \
+               --id {params.threshold} --otutabout {output} --threads {threads}"""
+
+
+# verify this is necessary after altering tax string
+rule biom:
+    input:
+        rules.compile_counts.output
+    output:
+        "OTU.biom"
+    shadow:
+        "shallow"
+    shell:
+        '''sed 's|\"||g' {input} | sed 's|\,|\;|g' > OTU_converted.txt
+           biom convert -i OTU_converted.txt -o {output} --to-json \
+               --process-obs-metadata sc_separated --table-type "OTU table"'''
+
+
+rule multiple_align:
+    input:
+        "OTU.fasta"
+    output:
+        "OTU_aligned.fasta"
+    version:
+        CLUSTALO_VERSION
+    threads:
+        config.get("threads", 1)
+    shell:
+        "clustalo -i {input} -o {output} --outfmt=fasta --threads {threads} --force"
+
+
+rule newick_tree:
+    input:
+        "OTU_aligned.fasta"
+    output:
+        "OTU.tree"
+    log:
+        "logs/fasttree.log"
+    shell:
+        "FastTree -nt -gamma -spr 4 -log {log} -quiet {input} > {output}"
+
+
+rule report:
+    input:
+        file1 = "OTU.biom",
+        file2 = "OTU.fasta",
+        file3 = "OTU.tree",
+        file4 = "OTU.txt",
+        raw_counts = expand("logs/{sample}_R1.fastq.count", sample=SAMPLES),
+        filtered_counts = expand("logs/{sample}_filtered_R1.fastq.count", sample=SAMPLES),
+        merged_counts = expand("logs/{sample}_merged.fastq.count", sample=SAMPLES)
+    shadow:
+        "shallow"
+    params:
+        kmer_len = config.get("reference_kmer_match_length", 31),
+        ham_dist = config.get("allowable_kmer_mismatches", 1),
+        min_read_len = config.get("minimum_passing_read_length", 100),
+        min_merge_len = config.get("minimum_merge_length", 150),
+        max_ee = config.get("maximum_expected_error", 1),
+        min_seq_abundance = config.get("minimum_sequence_abundance", 2),
+        samples = SAMPLES
+    output:
+        html = "README.html"
+    run:
+        from biom import parse_table
+        from biom.util import compute_counts_per_sample_stats
+        from operator import itemgetter
+        from numpy import std
+
+        # stats from the biom table
+        summary_csv = "stats.csv"
+        sample_summary_csv = "samplesummary.csv"
+        samples_csv = "samples.csv"
+        biom_per_sample_counts = {}
+        biom_libraries = ""
+        biom_observations = ""
+        with open(input.file1) as fh, open(summary_csv, 'w') as sumout, open(samples_csv, 'w') as samout, open(sample_summary_csv, 'w') as samplesum:
+            bt = parse_table(fh)
+            biom_libraries = "[%s]" % ", ".join(map(str, bt.sum("sample")))
+            biom_observations = "[%s]" % ", ".join(map(str, bt.sum("observation")))
+            stats = compute_counts_per_sample_stats(bt)
+            biom_per_sample_counts = stats[4]
+            sample_counts = list(stats[4].values())
+
+            # summary
+            print("Samples", "OTUs", "OTU Total Count", "OTU Table Density", sep=",", file=sumout)
+            print(len(bt.ids()), len(bt.ids(axis='observation')), sum(sample_counts), bt.get_table_density(), sep=",", file=sumout)
+
+            # sample summary within OTU table
+            print("Minimum Count", "Maximum Count", "Median", "Mean", "Standard Deviation", sep=",", file=samplesum)
+            print(stats[0], stats[1], stats[2], stats[3], std(sample_counts), sep=",", file=samplesum)
+
+            for k, v in sorted(stats[4].items(), key=itemgetter(1)):
+                print(k, '%1.1f' % v, sep=",", file=samout)
+
+        # stats from count files
+        sample_counts = {}
+
+        for sample in params.samples:
+            sample_counts[sample] = {}
+            # get raw count
+            for f in input.raw_counts:
+                if "%s_R1.fastq.count" % sample in f:
+                    with open(f) as fh:
+                        for line in fh:
+                            sample_counts[sample]['raw_counts'] = int(float(line.strip()))
+                            break
+            # filtered count
+            for f in input.filtered_counts:
+                if "%s_filtered_R1.fastq.count" % sample in f:
+                    with open(f) as fh:
+                        for line in fh:
+                            sample_counts[sample]['filtered_counts'] = int(float(line.strip()))
+                            break
+            # merged count
+            for f in input.merged_counts:
+                if "%s_merged.fastq.count" % sample in f:
+                    with open(f) as fh:
+                        for line in fh:
+                            sample_counts[sample]['merged_counts'] = int(float(line.strip()))
+                            break
+
+        raw_counts = []
+        filtered_counts = []
+        merged_counts = []
+        biom_counts = []
+        samps = []
+        # sort this by the raw counts total and get the strings for the report
+        for s in sorted(sample_counts.items(), key=lambda k_v: k_v[1]['raw_counts']):
+            samps.append(s[0])
+            raw_counts.append(s[1]['raw_counts'])
+            filtered_counts.append(s[1]['filtered_counts'])
+            merged_counts.append(s[1]['merged_counts'])
+            try:
+                # read count contribution to OTUs
+                biom_counts.append(biom_per_sample_counts[s[0]])
+            except KeyError:
+                biom_counts.append(0)
+
+        # quoted strings within brackets
+        samples_str = "['%s']" % "', '".join(map(str, samps))
+        # non-quoted ints or floats within brackets
+        raw_counts_str = "[%s]" % ", ".join(map(str, raw_counts))
+        filtered_counts_str = "[%s]" % ", ".join(map(str, filtered_counts))
+        merged_counts_str = "[%s]" % ", ".join(map(str, merged_counts))
+        biom_counts_str = "[%s]" % ", ".join(map(str, biom_counts))
+
+        report("""
+        =============================================================
+        ``hundo`` README
+        =============================================================
+
+        .. raw:: html
+
+            body{font-family:Helvetica,arial,sans-serif;font-size:14px;line-height:1.6;background-color:#fff;padding:30px;color:#333}body > :first-child{margin-top:0!important}body > :last-child{margin-bottom:0!important}a{color:#4183C4;text-decoration:none}a.absent{color:#c00}a.anchor{display:block;padding-left:30px;margin-left:-30px;cursor:pointer;position:absolute;top:0;left:0;bottom:0}h1,h2,h3,h4,h5,h6{margin:20px 0 10px;padding:0;font-weight:700;-webkit-font-smoothing:antialiased;cursor:text;position:relative}h2:first-child,h1:first-child,h1:first-child + h2,h3:first-child,h4:first-child,h5:first-child,h6:first-child{margin-top:0;padding-top:0}h1:hover a.anchor,h2:hover a.anchor,h3:hover a.anchor,h4:hover a.anchor,h5:hover a.anchor,h6:hover a.anchor{text-decoration:none}h1 tt,h1 code{font-size:inherit}h2 tt,h2 code{font-size:inherit}h3 tt,h3 code{font-size:inherit}h4 tt,h4 code{font-size:inherit}h5 tt,h5 code{font-size:inherit}h6 tt,h6 code{font-size:inherit}h1{font-size:28px;color:#000}h2{font-size:24px;border-bottom:1px solid #ccc;color:#000}h3{font-size:18px}h4{font-size:16px}h5{font-size:14px}h6{color:#777;font-size:14px}p,blockquote,ul,ol,dl,li,table,pre{margin:15px 0}hr{background:transparent url(http://tinyurl.com/bq5kskr) repeat-x 0 0;border:0 none;color:#ccc;height:4px;padding:0}body > h2:first-child{margin-top:0;padding-top:0}body > h1:first-child{margin-top:0;padding-top:0}body > h1:first-child + h2{margin-top:0;padding-top:0}body > h3:first-child,body > h4:first-child,body > h5:first-child,body > h6:first-child{margin-top:0;padding-top:0}a:first-child h1,a:first-child h2,a:first-child h3,a:first-child h4,a:first-child h5,a:first-child h6{margin-top:0;padding-top:0}h1 p,h2 p,h3 p,h4 p,h5 p,h6 p{margin-top:0}li p.first{display:inline-block}ul,ol{padding-left:30px}ul :first-child,ol :first-child{margin-top:0}ul :last-child,ol :last-child{margin-bottom:0}dl{padding:0}dl dt{font-size:14px;font-weight:700;font-style:italic;padding:0;margin:15px 0 5px}dl dt:first-child{padding:0}dl dt > :first-child{margin-top:0}dl dt > :last-child{margin-bottom:0}dl dd{margin:0 0 15px;padding:0 15px}dl dd > :first-child{margin-top:0}dl dd > :last-child{margin-bottom:0}blockquote{border-left:4px solid #ddd;padding:0 15px;color:#777}blockquote > :first-child{margin-top:0}blockquote > :last-child{margin-bottom:0}table{padding:0;border-spacing:0;border-collapse:collapse}table tr{border-top:1px solid #ccc;background-color:#fff;margin:0;padding:0}table tr:nth-child(2n){background-color:#f8f8f8}table tr th{font-weight:700;border:1px solid #ccc;text-align:left;margin:0;padding:6px 13px}table tr td{border:1px solid #ccc;text-align:left;margin:0;padding:6px 13px}table tr th :first-child,table tr td :first-child{margin-top:0}table tr th :last-child,table tr td :last-child{margin-bottom:0}img{max-width:100%}span.frame{display:block;overflow:hidden}span.frame > span{border:1px solid #ddd;display:block;float:left;overflow:hidden;margin:13px 0 0;padding:7px;width:auto}span.frame span img{display:block;float:left}span.frame span span{clear:both;color:#333;display:block;padding:5px 0 0}span.align-center{display:block;overflow:hidden;clear:both}span.align-center > span{display:block;overflow:hidden;margin:13px auto 0;text-align:center}span.align-center span img{margin:0 auto;text-align:center}span.align-right{display:block;overflow:hidden;clear:both}span.align-right > span{display:block;overflow:hidden;margin:13px 0 0;text-align:right}span.align-right span img{margin:0;text-align:right}span.float-left{display:block;margin-right:13px;overflow:hidden;float:left}span.float-left span{margin:13px 0 0}span.float-right{display:block;margin-left:13px;overflow:hidden;float:right}span.float-right > span{display:block;overflow:hidden;margin:13px auto 0;text-align:right}code,tt{margin:0 2px;padding:0 5px;white-space:nowrap;border:1px solid #eaeaea;background-color:#f8f8f8;border-radius:3px}pre code{margin:0;padding:0;white-space:pre;border:none;background:transparent}.highlight pre{background-color:#f8f8f8;border:1px solid #ccc;font-size:13px;line-height:19px;overflow:auto;padding:6px 10px;border-radius:3px}pre{background-color:#f8f8f8;border:1px solid #ccc;font-size:13px;line-height:19px;overflow:auto;padding:6px 10px;border-radius:3px}pre code,pre tt{background-color:transparent;border:none}div#metadata{text-align:right}
+            <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+            <script src="https://code.highcharts.com/highcharts.js"></script>
+            <script src="https://code.highcharts.com/modules/exporting.js"></script>
+            <script type="text/javascript">
+            $(function () {{
+                $('#raw-count-plot').highcharts({{
+                    chart: {{
+                        type: 'column'
+                    }},
+                    title: {{
+                        text: 'Sequence Counts'
+                    }},
+                    xAxis: {{
+                        categories: {samples_str},
+                        crosshair: true
+                    }},
+                    yAxis: {{
+                        min: 0,
+                        title: {{
+                            text: 'Count'
+                        }}
+                    }},
+                    tooltip: {{
+                        headerFormat: '<span style="font-size:10px">{{point.key}}</span><table>',
+                        pointFormat: '<tr><td style="color:{{series.color}};padding:0">{{series.name}}: </td>' +
+                            '<td style="padding:0"><b>{{point.y:.1f}}</b></td></tr>',
+                        footerFormat: '</table>',
+                        shared: true,
+                        useHTML: true
+                    }},
+                    credits: {{
+                        enabled: false
+                    }},
+                    plotOptions: {{
+                        column: {{
+                            pointPadding: 0.2,
+                            borderWidth: 0
+                        }}
+                    }},
+                    series: [{{
+                                name: 'Raw',
+                                data: {raw_counts_str}
+                            }},
+                            {{
+                                name: 'Filtered',
+                                data: {filtered_counts_str},
+                                visible: false
+                            }},
+                            {{
+                                name: 'Merged',
+                                data: {merged_counts_str},
+                                visible: false
+                            }},
+                            {{
+                                name: 'Assigned to OTUs',
+                                data: {biom_counts_str},
+                                visible: false
+                            }}]
+                    }});
+            }});
+
+            $(function() {{
+              $('#library-sizes').highcharts({{
+                chart: {{
+                  type: 'column'
+                }},
+                title: {{
+                  text: 'Library Sizes'
+                }},
+                legend: {{
+                  enabled: false
+                }},
+                credits: {{
+                  enabled: false
+                }},
+                exporting: {{
+                  enabled: false
+                }},
+                tooltip: {{}},
+                plotOptions: {{
+                  column: {{
+                      pointPadding: 0.2,
+                      borderWidth: 0
+                  }},
+                  series: {{
+                      color: '#A9A9A9'
+                  }}
+                }},
+                xAxis: {{
+                  title: {{
+                    text: 'Number of Reads (Counts)'
+                  }}
+                }},
+                yAxis: {{
+                  title: {{
+                    text: 'Number of Libraries'
+                  }}
+                }},
+                series: [{{
+                            name: 'Library',
+                            data: binData({biom_libraries})
+                        }}]
+                }});
+            }});
+
+            $(function() {{
+              $('#otu-totals').highcharts({{
+                chart: {{
+                  type: 'column'
+                }},
+                title: {{
+                  text: 'OTU Totals'
+                }},
+                legend: {{
+                  enabled: false
+                }},
+                credits: {{
+                  enabled: false
+                }},
+                exporting: {{
+                  enabled: false
+                }},
+                tooltip: {{}},
+                plotOptions: {{
+                  column: {{
+                      pointPadding: 0.2,
+                      borderWidth: 0
+                  }},
+                  series: {{
+                      color: '#A9A9A9'
+                  }}
+                }},
+                xAxis: {{
+                  title: {{
+                    text: 'Number of Reads (Counts)'
+                  }}
+                }},
+                yAxis: {{
+                  type: 'logarithmic',
+                  minorTickInterval: 0.1,
+                  title: {{
+                    text: 'log(Number of OTUs)'
+                  }}
+                }},
+                series: [{{
+                            name: 'Observations',
+                            data: binData({biom_observations})
+                        }}]
+                }});
+            }});
+
+            function binData(data) {{
+
+              var hData = new Array(), //the output array
+                size = data.length, //how many data points
+                bins = Math.round(Math.sqrt(size)); //determine how many bins we need
+              bins = bins > 50 ? 50 : bins; //adjust if more than 50 cells
+              var max = Math.max.apply(null, data), //lowest data value
+                min = Math.min.apply(null, data), //highest data value
+                range = max - min, //total range of the data
+                width = range / bins, //size of the bins
+                bin_bottom, //place holders for the bounds of each bin
+                bin_top;
+
+              //loop through the number of cells
+              for (var i = 0; i < bins; i++) {{
+
+                //set the upper and lower limits of the current cell
+                bin_bottom = min + (i * width);
+                bin_top = bin_bottom + width;
+
+                //check for and set the x value of the bin
+                if (!hData[i]) {{
+                  hData[i] = new Array();
+                  hData[i][0] = bin_bottom + (width / 2);
+                }}
+
+                //loop through the data to see if it fits in this bin
+                for (var j = 0; j < size; j++) {{
+                  var x = data[j];
+
+                  //adjust if it's the first pass
+                  i == 0 && j == 0 ? bin_bottom -= 1 : bin_bottom = bin_bottom;
+
+                  //if it fits in the bin, add it
+                  if (x > bin_bottom && x <= bin_top) {{
+                    !hData[i][1] ? hData[i][1] = 1 : hData[i][1]++;
+                  }}
+                }}
+              }}
+              $.each(hData, function(i, point) {{
+                if (typeof point[1] == 'undefined') {{
+                  hData[i][1] = 0;
+                }}
+              }});
+              return hData;
+            }}
+            </script>
+
+        .. contents::
+            :backlinks: none
+
+        Summary
+        -------
+
+        .. csv-table::
+            :file: {summary_csv}
+            :header-rows: 1
+
+        .. raw:: html
+
+            <div id="raw-count-plot" class="one-col"></div>
+            <div>
+                <div id="library-sizes" class="two-col-left"></div>
+                <div id="otu-totals" class="two-col-right"></div>
+            </div>
+
+        Output
+        ------
+
+        Chimera Removal
+        ***************
+
+        {chimera_info}
+
+        Biom Table
+        **********
+
+        Counts observed per sample as represented in the biom file (file1_). This count is
+        representative of quality filtered reads that were assigned per sample to OTU seed
+        sequences.
+
+        .. csv-table::
+            :file: {sample_summary_csv}
+            :header-rows: 1
+
+        Taxonomy was assigned to the OTU sequences at an overall cutoff of {params.tax_cutoff}%.
+
+        Taxonomy database - {taxonomy_metadata}
+
+        OTU Sequences
+        *************
+
+        The OTU sequences are available in FASTA format (file2_) and aligned as newick tree
+        (file3_).
+
+        To build the tree, sequences were aligned using Clustalo [1] and FastTree2 [2] was used
+        to generate the phylogenetic tree.
+
+
+        Methods
+        -------
+
+        Reads were quality filtered with BBDuk2 [3]
+        to remove adapter sequences and PhiX with matching kmer length of {params.kmer_len}
+        bp at a hamming distance of {params.ham_dist}. Reads shorter than {params.min_read_len} bp
+        were discarded. Reads were merged using USEARCH [4] with a minimum length
+        threshold of {params.min_merge_len} bp and maximum error rate of {params.max_ee}%. Sequences
+        were dereplicated (minimum sequence abundance of {params.min_seq_abundance}) and clustered
+        using the distance-based, greedy clustering method of USEARCH [5] at
+        {CLUSTER_THRESHOLD}% pairwise sequence identity among operational taxonomic unit (OTU) member
+        sequences. De novo prediction of chimeric sequences was performed using USEARCH during
+        clustering. {taxonomy_assignment} {chimera_filtering}
+
+
+        References
+        ----------
+
+        1. Sievers F, Wilm A, Dineen D, Gibson TJ, Karplus K, Li W, Lopez R, McWilliam H, Remmert M, Söding J, et al. 2011. Fast, scalable generation of high-quality protein multiple sequence alignments using Clustal Omega. Mol Syst Biol 7: 539
+        2. Price MN, Dehal PS, Arkin AP. 2010. FastTree 2--approximately maximum-likelihood trees for large alignments. ed. A.F.Y. Poon. PLoS One 5: e9490
+        3. Bushnell, B. (2014). BBMap: A Fast, Accurate, Splice-Aware Aligner. URL https://sourceforge.net/projects/bbmap/
+
+
+        All Files
+        ---------
+
+        The results directory contains the following::
+
+                <results>/
+                ├── blast
+                │   ├── blast_hits.txt        # raw blast hits per OTU seed seq
+                │   ├── lca_assignments.txt   # raw lca results TSV from blast hits
+                ├── OTU.biom                  # tax annotated biom (no metadata, no normalization)
+                ├── OTU_tax.fasta             # otu seqs with tax in FASTA header
+                ├── OTU.txt                   # tab delimited otu table with taxonomy
+                ├── README.html               # results report when annotation method is 'blast'
+                ├── logs
+                │   ├── cluster_sequences.log
+                │   ├── fasttree.log
+                │   └── uniques.log
+                ├── OTU_aligned.fasta         # multiple alignment file of otu seed seqs
+                ├── OTU.fasta                 # otu seqs without taxonomy
+                ├── OTU.tree                  # newick tree of multiple alignment
+                ├── merged_EE?.fasta          # error corrected FASTA prior to clustering into OTU seqs
+                └── merged.fastq              # all sample reads merged into single file with updated headers
+
+        Downloads
+        ---------
+
+        """, output.html, metadata="Author: " + config.get("author", "hundo"),
+        stylesheet=None, file1=input.file1, file2=input.file2, file3=input.file3,
+        file4=input.file4)
