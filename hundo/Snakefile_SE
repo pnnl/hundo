@@ -27,19 +27,9 @@ def get_samples(eid, min_reads=1000):
     input_dir = os.path.join("results", eid, "demux")
 
     for f in os.listdir(input_dir):
-
-        if (f.endswith("fastq") or f.endswith("fq")) and ("_r1" in f or "_R1" in f):
-
+        if (f.endswith("fastq") or f.endswith("fq")):
             sample_id = f.partition(".")[0].partition("_")[0]
-            count = read_count(os.path.join(input_dir, f))
-
-            if count >= min_reads:
-                samples.add(sample_id)
-
-            else:
-                print("Omitting sample: %s (%d reads)" % (sample_id, count), file=sys.stderr)
-                omitted.add(sample_id)
-
+            samples.add(sample_id)
     return samples, omitted
 
 
@@ -80,7 +70,7 @@ def fix_fasta_tax_entry(tax, kingdom="?"):
     return "%s;tax=%s;" % (toks[0], new_tax)
 
 
-PROTOCOL_VERSION = "1.0.5"
+PROTOCOL_VERSION = "1.0.5se"
 USEARCH_VERSION = check_output("usearch --version", shell=True).strip()
 CLUSTALO_VERSION = check_output("clustalo --version", shell=True).strip()
 SAMPLES, OMITTED = get_samples(config.get("eid", None), config.get("minimum_reads", 1000))
@@ -92,11 +82,9 @@ METHOD = config["annotation_method"]
 rule all:
     input:
         expand("results/{eid}/logs/quality_filtering_stats.txt", eid=config['eid']),
-        expand("results/{eid}/demux/{sample}_R1.fastq", eid=config['eid'], sample=SAMPLES),
-        expand("results/{eid}/demux/{sample}_R2.fastq", eid=config['eid'], sample=SAMPLES),
-        expand("results/{eid}/logs/{sample}_R1.fastq.count", eid=config['eid'], sample=SAMPLES),
-        expand("results/{eid}/logs/{sample}_filtered_R1.fastq.count", eid=config['eid'], sample=SAMPLES),
-        expand("results/{eid}/logs/{sample}_merged.fastq.count", eid=config['eid'], sample=SAMPLES),
+        expand("results/{eid}/demux/{sample}.fastq", eid=config['eid'], sample=SAMPLES),
+        expand("results/{eid}/logs/{sample}.fastq.count", eid=config['eid'], sample=SAMPLES),
+        expand("results/{eid}/logs/{sample}_filtered.fastq.count", eid=config['eid'], sample=SAMPLES),
         expand("results/{eid}/{pid}/{method}/OTU.biom", eid=config['eid'], pid=CLUSTER_THRESHOLD, method=METHOD),
         expand("results/{eid}/{pid}/OTU.tree", eid=config['eid'], pid=CLUSTER_THRESHOLD, method=METHOD),
         expand("results/{eid}/{pid}/{method}/README.html", eid=config['eid'], pid=CLUSTER_THRESHOLD, method=METHOD),
@@ -134,20 +122,17 @@ rule make_blast_db:
 
 
 rule count_raw_reads:
-    input: "results/{eid}/demux/{sample}_R1.fastq"
-    output: "results/{eid}/logs/{sample}_R1.fastq.count"
+    input: "results/{eid}/demux/{sample}.fastq"
+    output: "results/{eid}/logs/{sample}.fastq.count"
     shell: "awk '{{n++}}END{{print n/4}}' {input} > {output}"
 
 
 rule quality_filter_reads:
     input:
-        r1 = "results/{eid}/demux/{sample}_R1.fastq",
-        r2 = "results/{eid}/demux/{sample}_R2.fastq"
+        r1 = "results/{eid}/demux/{sample}.fastq"
     output:
-        r1 = temp("results/{eid}/quality_filter/{sample}_R1.fastq"),
-        r2 = temp("results/{eid}/quality_filter/{sample}_R2.fastq"),
+        r1 = temp("results/{eid}/quality_filter/{sample}.fastq"),
         stats = "results/{eid}/quality_filter/{sample}_quality_filtering_stats.txt"
-    message: "Filtering reads using BBDuk2 to remove adapters and phiX with matching kmer length of {params.k} at a hamming distance of {params.hdist} and quality trim both ends to Q{params.quality}. Reads shorter than {params.minlength} were discarded."
     params:
         lref = config['filtering']['adapters'],
         rref = config['filtering']['adapters'],
@@ -159,16 +144,16 @@ rule quality_filter_reads:
         qtrim = "rl",
         minlength = config['filtering']['minimum_passing_read_length']
     threads: config.get("threads_small", config.get("threads", 1))
-    shell: """bbduk2.sh -Xmx8g in={input.r1} in2={input.r2} out={output.r1} out2={output.r2} \
+    shell: """bbduk2.sh -Xmx8g in={input.r1} out={output.r1} \
                   rref={params.rref} lref={params.lref} fref={params.fref} mink={params.mink} \
-                  stats={output.stats} hdist={params.hdist} k={params.k} \
+                  stats={output.stats} hdist={params.hdist} k={params.k} qout=33 \
                   trimq={params.quality} qtrim={params.qtrim} threads={threads} \
                   minlength={params.minlength} overwrite=true"""
 
 
 rule count_filtered_reads:
-    input: "results/{eid}/quality_filter/{sample}_R1.fastq"
-    output: "results/{eid}/logs/{sample}_filtered_R1.fastq.count"
+    input: "results/{eid}/quality_filter/{sample}.fastq"
+    output: "results/{eid}/logs/{sample}_filtered.fastq.count"
     shell: "awk '{{n++}}END{{print n/4}}' {input} > {output}"
 
 
@@ -178,30 +163,9 @@ rule combine_filtering_stats:
     shell: "cat {input} > {output}"
 
 
-rule merge_reads:
-    input:
-        r1 = "results/{eid}/quality_filter/{sample}_R1.fastq",
-        r2 = "results/{eid}/quality_filter/{sample}_R2.fastq"
-    output: temp("results/{eid}/demux/{sample}_merged.fastq")
-    version: USEARCH_VERSION
-    message: "Merging paired-end reads with USEARCH at a minimum merge length of {params.minimum_merge_length}"
-    params: minimum_merge_length = config['merging']['minimum_merge_length']
-    log: "results/{eid}/{pid}/logs/fastq_mergepairs.log".format(eid=config['eid'], pid=CLUSTER_THRESHOLD)
-    shell: """usearch -fastq_mergepairs {input.r1} -relabel @ -sample {wildcards.sample} \
-                  -fastq_minmergelen {params.minimum_merge_length} \
-                  -fastqout {output} -log {log}"""
-
-
-rule count_joined_reads:
-    input: "results/{eid}/demux/{sample}_merged.fastq"
-    output: "results/{eid}/logs/{sample}_merged.fastq.count"
-    shell: "awk '{{n++}}END{{print n/4}}' {input} > {output}"
-
-
-rule combine_merged_reads:
-    input: expand("results/{eid}/demux/{sample}_merged.fastq", eid=config['eid'], sample=SAMPLES)
+rule combine_reads:
+    input: expand("results/{eid}/quality_filter/{sample}.fastq", eid=config['eid'], sample=SAMPLES)
     output: "results/{eid}/merged.fastq"
-    message: "Concatenating the merged reads into a single file"
     shell: "cat {input} > {output}"
 
 
@@ -236,12 +200,6 @@ rule cluster_sequences:
     log: "results/{eid}/{pid}/logs/cluster_sequences.log"
     shell: """usearch -cluster_otus {input} -minsize {params.minsize} -otus {output} -relabel OTU_ \
                   -otu_radius_pct {params.otu_radius_pct} -log {log}"""
-
-
-# cluster
-# -cluster_otus $out/uniques.fa -minsize 2 -otus $out/otus.fa -relabel Otu -log $out/cluster_otus.log
-# followed by error correction
-# -unoise $out/uniques.fa -fastaout $out/denoised.fa -relabel Den -log $out/unoise.log -minampsize 4
 
 
 if config['chimera_filter_seed_sequences']:
@@ -368,7 +326,7 @@ else:
 
 rule compile_counts:
     input:
-        fastq = rules.combine_merged_reads.output,
+        fastq = "results/{eid}/merged.fastq",
         fasta = "results/{eid}/{pid}/{method}/OTU_tax.fasta"
     output: "results/{eid}/{pid}/{method}/OTU.txt"
     params: threshold = config['mapping_to_otus']['read_identity_requirement']
@@ -409,9 +367,8 @@ rule report:
         file2 = "results/{eid}/{pid}/OTU.fasta".format(eid=config['eid'], pid=CLUSTER_THRESHOLD),
         file3 = "results/{eid}/{pid}/OTU.tree".format(eid=config['eid'], pid=CLUSTER_THRESHOLD),
         file4 = "results/{eid}/{pid}/{method}/OTU.txt".format(eid=config['eid'], pid=CLUSTER_THRESHOLD, method=METHOD),
-        raw_counts = expand("results/{eid}/logs/{sample}_R1.fastq.count", eid=config['eid'], sample=SAMPLES),
-        filtered_counts = expand("results/{eid}/logs/{sample}_filtered_R1.fastq.count", eid=config['eid'], sample=SAMPLES),
-        merged_counts = expand("results/{eid}/logs/{sample}_merged.fastq.count", eid=config['eid'], sample=SAMPLES),
+        raw_counts = expand("results/{eid}/logs/{sample}.fastq.count", eid=config['eid'], sample=SAMPLES),
+        filtered_counts = expand("results/{eid}/logs/{sample}_filtered.fastq.count", eid=config['eid'], sample=SAMPLES),
         css = "resources/report.css"
     shadow: "shallow"
     params:
@@ -499,29 +456,21 @@ rule report:
             sample_counts[sample] = {}
             # get raw count
             for f in input.raw_counts:
-                if "%s_R1.fastq.count" % sample in f:
+                if sample in f:
                     with open(f) as fh:
                         for line in fh:
                             sample_counts[sample]['raw_counts'] = int(float(line.strip()))
                             break
             # filtered count
             for f in input.filtered_counts:
-                if "%s_filtered_R1.fastq.count" % sample in f:
+                if sample in f:
                     with open(f) as fh:
                         for line in fh:
                             sample_counts[sample]['filtered_counts'] = int(float(line.strip()))
                             break
-            # merged count
-            for f in input.merged_counts:
-                if "%s_merged.fastq.count" % sample in f:
-                    with open(f) as fh:
-                        for line in fh:
-                            sample_counts[sample]['merged_counts'] = int(float(line.strip()))
-                            break
 
         raw_counts = []
         filtered_counts = []
-        merged_counts = []
         biom_counts = []
         samps = []
         # sort this by the raw counts total and get the strings for the report
@@ -529,7 +478,6 @@ rule report:
             samps.append(s[0])
             raw_counts.append(s[1]['raw_counts'])
             filtered_counts.append(s[1]['filtered_counts'])
-            merged_counts.append(s[1]['merged_counts'])
             try:
                 # read count contribution to OTUs
                 biom_counts.append(biom_per_sample_counts[s[0]])
@@ -541,7 +489,6 @@ rule report:
         # non-quoted ints or floats within brackets
         raw_counts_str = "[%s]" % ", ".join(map(str, raw_counts))
         filtered_counts_str = "[%s]" % ", ".join(map(str, filtered_counts))
-        merged_counts_str = "[%s]" % ", ".join(map(str, merged_counts))
         biom_counts_str = "[%s]" % ", ".join(map(str, biom_counts))
 
         report("""
@@ -597,11 +544,6 @@ rule report:
                             {{
                                 name: 'Filtered',
                                 data: {filtered_counts_str},
-                                visible: false
-                            }},
-                            {{
-                                name: 'Merged',
-                                data: {merged_counts_str},
                                 visible: false
                             }},
                             {{
