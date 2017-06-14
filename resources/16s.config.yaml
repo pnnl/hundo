@@ -1,75 +1,42 @@
 author: "Joe Brown (joe.brown@pnnl.gov)"
-# prefilter out any sample with less than this many starting sequences
-minimum_reads: 200
 threads: 24
 threads_small: 4
-# either use 'blast' or 'utax'
-# with blast and SILVA, more sequences will be annotated with reasonable
-# confidence
-# with utax, fewer sequences will be annotated more preciously to what
-# prediction_confidence_cutoff is set to below
-annotation_method: blast
-# 'true' or 'false'
-# this is a reference-based chimera filter and is applied to OTU seed sequences
-chimera_filter_seed_sequences: true
-# used to fill missing taxonomy entries or convert domain to kingdom;
-# more for use in conjunction with utax ITS reference database
-kingdom: "?"
-utax_database:
-    fasta: ref/rdp_16s_trainset16/fasta/refdb.fa
-    # joined read length dependent; utax taxconfs file
-    trained_parameters: ref/rdp_16s_trainset16/taxconfs/250.tc
-    # used in building report
-    metadata: 'RDP Trainset database version 16 trained with UTAX 250 bp configuration'
-    # citation for this tax database
-    citation: "Cole, J. R., Q. Wang, J. A. Fish, B. Chai, D. M. McGarrell, Y. Sun, C. T. Brown, A. Porras-Alfaro, C. R. Kuske, and J. M. Tiedje. 2014. Ribosomal Database Project: data and tools for high throughput rRNA analysis Nucl. Acids Res. 42(Database issue):D633-D642; doi: 10.1093/nar/gkt1244 [PMID: 24288368]"
-chimera_database:
-    fasta: ref/silva_123/SLV_123_SSU.fasta
-    # used to build report
-    metadata: 'SILVA database version 123 clustered at 99%'
-    citation: "Quast C, Pruesse E, Yilmaz P, Gerken J, Schweer T, Yarza P, Peplies J, Glöckner FO. 2013. The SILVA ribosomal RNA gene database project: improved data processing and web-based tools. Nucl. Acids Res. 41 (D1): D590-D596"
-blast_database:
-    fasta: ref/silva_123/SLV_123_SSU.fasta
-    taxonomy: ref/silva_123/SLV_123_SSU.tax
-    metadata: 'SILVA database version 123 clustered at 99%'
-    citation: "Quast C, Pruesse E, Yilmaz P, Gerken J, Schweer T, Yarza P, Peplies J, Glöckner FO. 2013. The SILVA ribosomal RNA gene database project: improved data processing and web-based tools. Nucl. Acids Res. 41 (D1): D590-D596"
-merging:
-    # minimum passing read length after merging
-    minimum_merge_length: 175
-filtering:
-    # fastas to parse into kmers which are then trimmed from the sequences
-    adapters: ref/adapters.fa
-    contaminants: ref/phix174_ill.ref.fa.gz
-    # Look for shorter kmers at read tips down to this length; 0 disables
-    mink: 8
-    # lower than 20 to allow overlap the chance to increase the quality
-    minimum_base_quality: 10
-    # kmer mismatches allowed during adapter trim process
-    allowable_kmer_mismatches: 1
-    # length of kmer to search against sequences
-    reference_kmer_match_length: 31
-    # passing single-end read length, prior to merging
-    minimum_passing_read_length: 51
-    # after merging; the allowable limit of erroneous bases; accepts fractions as well
-    maximum_expected_error: 1
-    # {denoised, high_confidence, specific, balanced, sensitive}
-    # denoised - reports all perfect chimeric models
-    # high_confidence - high confidence, high false negative rate
-    # specific - high confidence, high false-negative rate (just less so than high_confidence)
-    # balanced - balance false negatives and false positives to minimize the overall error rate on typical data
-    # sensitive - emphasizes high sensitivity at the expense of a high false positive rate
-    chimera_mode: high_confidence
-clustering:
-    minimum_sequence_abundance: 2
-    # maximum difference between an OTU member sequence and the representative sequence of that OTU
-    percent_of_allowable_difference: 3
-taxonomy:
-    # OTU sequences are predicted at each phylogenetic level up to the point
-    # where confidence dips below this threshold
-    prediction_confidence_cutoff: 0.8
-    # comma separated list of min % identity to accept a database hit at a
-    # taxonomic level; Species to Kingdom
-    lca_cutoffs: 99,97,95,90,85,80,0
-mapping_to_otus:
-    # reflects the difference between OTU clusters to reduce ambiguous assignment
-    read_identity_requirement: 0.97
+# reference databases will be downloaded here
+database_dir: /pic/projects/mint/references/hundo
+
+## QUALITY CONTROL
+# define a path, omit altogether, or set as false
+filter_adapters: /pic/projects/mint/references/hundo/adapters.fa
+filter_contaminants: /pic/projects/mint/references/hundo/phix174_ill.ref.fa.gz
+# kmer mismatches allowed during adapter trim process
+allowable_kmer_mismatches: 1
+# length of kmer to search against sequences
+reference_kmer_match_length: 31
+# Look for shorter kmers at read tips down to this length; 0 disables
+reduced_kmer_min: 8
+# passing single-end read length, prior to merging
+minimum_passing_read_length: 100
+minimum_base_quality: 10
+minimum_merge_length: 150
+perform_error_correction: true
+# after merging; the allowable limit of erroneous bases; accepts fractions as well
+maximum_expected_error: 1
+# 'true' of 'false'
+denovo_chimera_filter: true
+# define a path, set to true to use blast reference, or set to false to skip
+reference_chimera_filter: true
+
+## CLUSTERING
+minimum_sequence_abundance: 2
+# maximum difference between an OTU member sequence and the representative sequence of that OTU
+percent_of_allowable_difference: 3
+
+## ANNOTATION
+# 16S options: 'greengenes', 'silva'; ITS options: 'unite'
+reference_database: silva
+# filter out alignments below this bitscore threshold
+blast_minimum_bitscore: 100
+# when calculating LCA, only use this fraction of HSPs from the best scoring alignment
+blast_top_fraction: 0.95
+# reflects the difference between OTU clusters to reduce ambiguous assignment
+read_identity_requirement: 0.97
