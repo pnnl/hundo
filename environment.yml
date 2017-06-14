@@ -1,11 +1,16 @@
 name: hundo_env
 channels:
     - bioconda
+    - defaults
+    - conda-forge
 dependencies:
     - bbmap
     - biom-format
     - blast
     - clustalo
     - fasttree
+    # - hundo
     - numpy
+    - pyyaml
     - snakemake
+    - vsearch
