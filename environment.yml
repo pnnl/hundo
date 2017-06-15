@@ -12,5 +12,6 @@ dependencies:
     # - hundo
     - numpy
     - pyyaml
+    - quorum
     - snakemake
     - vsearch
