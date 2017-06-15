@@ -32,7 +32,7 @@ def make_config(config, database_dir, threads):
     conf["author"] = subprocess.check_output(["whoami"]).decode("utf-8").strip()
     conf["threads"] = threads
     conf["threads_small"] = max(int(conf["threads"] / 4), 1)
-    conf["database_dir"] = database_dir
+    conf["database_dir"] = os.path.realpath(database_dir)
     conf["filter_adapters"] = ""
     conf["filter_contaminants"] = ""
     conf["allowable_kmer_mismatches"] = 1
@@ -54,7 +54,7 @@ def make_config(config, database_dir, threads):
     with open(config, "w") as f:
         print(yaml.dump(conf, default_flow_style=False), file=f)
     logging.info("Configuration file written to %s" % config)
-    logging.info("For parameter definitions, please see our documentation at ")
+    logging.info("For parameter definitions, please see our documentation at hundo.readthedocs.io")
 
 
 @cli.command("lca", short_help="runs LCA across BLAST hits")
@@ -87,18 +87,20 @@ def get_snakefile():
 
 @cli.command("annotate", context_settings=dict(ignore_unknown_options=True), short_help="run annotation protocol")
 @click.argument("config", type=click.Path(exists=True))
+@click.argument("fastqdir", type=click.Path(exists=True))
 @click.option("-j", "--jobs", default=multiprocessing.cpu_count(), type=int, show_default=True, help="use at most this many cores in parallel; total running tasks at any given time will be jobs/threads")
 @click.option("-o", "--out-dir", default=os.path.realpath("."), show_default=True, help="results output directory")
 @click.option("--dryrun", is_flag=True, default=False, show_default=True, help="do not execute anything, just show the commands that would be executed")
 @click.argument("snakemake_args", nargs=-1, type=click.UNPROCESSED)
-def run_annotate(config, jobs, out_dir, dryrun, snakemake_args):
+def run_annotate(config, fastqdir, jobs, out_dir, dryrun, snakemake_args):
     cmd = ("snakemake --snakefile {snakefile} --directory {out_dir} --printshellcmds "
            "--jobs {jobs} --rerun-incomplete --configfile '{config}' --nolock "
-           "--config {args} --{dryrun}").format(snakefile=get_snakefile(),
-                                                                    out_dir=out_dir,
-                                                                    jobs=jobs,
-                                                                    config=config,
-                                                                    dryrun="dryrun" if dryrun else "",
-                                                                    args=" ".join(snakemake_args))
+           "--config fastq_dir={fq_dir} {args} --{dryrun}").format(snakefile=get_snakefile(),
+                                                                   out_dir=os.path.realpath(out_dir),
+                                                                   jobs=jobs,
+                                                                   config=os.path.realpath(config),
+                                                                   fq_dir=os.path.realpath(fastqdir),
+                                                                   dryrun="dryrun" if dryrun else "",
+                                                                   args=" ".join(snakemake_args))
     logging.info("Executing: " + cmd)
-    check_call(cmd, shell=True)
+    subprocess.check_call(cmd, shell=True)
