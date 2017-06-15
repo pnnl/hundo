@@ -1,9 +1,9 @@
 import hashlib
 import os
+import subprocess
 import sys
 from snakemake.logging import logger
 from snakemake.utils import report
-from subprocess import check_output
 
 
 def get_sample_files(config):
@@ -12,7 +12,7 @@ def get_sample_files(config):
         logger.error("'fastq_dir' has not been set -- this directory should contain your input FASTQs")
         sys.exit(1)
 
-    print("Finding samples in %s" % fastq_dir)
+    logger.info("Finding samples in %s" % fastq_dir)
 
     samples = dict()
     seen = set()
@@ -59,6 +59,7 @@ def get_sample_files(config):
                 continue
 
             samples[sample_id] = fastq_paths
+    logger.info("Found %d samples for processing" % len(samples))
     return samples
 
 
@@ -67,11 +68,10 @@ def get_cluster_sequences_input(wildcards):
 
 
 def get_run_reference_chimera_filter_inputs(wildcards):
-    if os.path.exists(config.get("reference_chimera_filter")):
-        return {"fasta": "OTU_unfiltered.fasta", "db": config.get("reference_chimera_filter")}
-    # set to 'true'
-    else:
+    if config.get("reference_chimera_filter") is True:
         return {"fasta": "OTU_unfiltered.fasta", "db": REFFASTA}
+    else:
+        return {"fasta": "OTU_unfiltered.fasta", "db": config.get("reference_chimera_filter")}
 
 
 def fix_tax_entry(tax, kingdom="?"):
@@ -122,32 +122,12 @@ def md5(fname):
     return hash_md5.hexdigest()
 
 
-def validate_config(config):
-    valid = True
-    if not config.get("blast_fasta"):
-        logger.critical("A BLAST reference FASTA file must be specified under option 'blast_fasta'")
-        valid = False
-    if config.get("blast_fasta") and not os.path.exists(config.get("blast_fasta")):
-        logger.critical("The BLAST reference specified [%s] does not exist" % config.get("blast_fasta"))
-        valid = False
-    if not config.get("blast_taxonomy"):
-        logger.critical("A BLAST reference taxonomy file must be specified under option 'blast_taxonomy'")
-        valid = False
-    if config.get("blast_taxonomy") and not os.path.exists(config.get("blast_taxonomy")):
-        logger.critical("The BLAST reference taxonomy specified [%s] does not exist" % config.get("blast_taxonomy"))
-        valid = False
-    if not valid:
-        sys.exit(1)
-
-
-validate_config(config)
-
-PROTOCOL_VERSION = check_output("hundo --version", shell=True).decode("utf-8").strip()
-VSEARCH_VERSION = check_output("vsearch", shell=True).decode("utf-8").strip().split(",")[0]
-CLUSTALO_VERSION = check_output("clustalo --version", shell=True).strip()
-SAMPLES = get_samples(config)
+PROTOCOL_VERSION = subprocess.check_output("hundo --version", shell=True).decode("utf-8").strip()
+VSEARCH_VERSION = subprocess.check_output("vsearch --version", stderr=subprocess.STDOUT, shell=True).decode("utf-8").strip().split(",")[0]
+CLUSTALO_VERSION = subprocess.check_output("clustalo --version", shell=True).strip()
+SAMPLES = get_sample_files(config)
 # name output folder appropriately
-CLUSTER_THRESHOLD = 100 - config.get(int("percent_of_allowable_difference"), 3)
+CLUSTER_THRESHOLD = 100 - int(config.get("percent_of_allowable_difference", 3))
 
 REFERENCES = {"greengenes.fasta.nhr": "200f1b4356e59be524525e4ca83cefc1",
               "greengenes.fasta.nin": "f41470ebc95c21f13b54f7b127ebe2ad",
@@ -165,14 +145,15 @@ REFERENCES = {"greengenes.fasta.nhr": "200f1b4356e59be524525e4ca83cefc1",
               "unite.map": "8f5b11fe1074109627e010418ffb467b",
               "unite.tre": "3e1c586184e91a3cfa10a19c9855169c"}
 REF = [k for k in REFERENCES.keys() if k.startswith(config.get("reference_database", "silva"))]
-REFFASTA = [os.path.join(config.get("database_dir", "."), i) for i in REF if ".fasta" in i][0].rpartition(".")[0]
+BLASTREF = [os.path.join(config.get("database_dir", "."), i) for i in REF]
+REFFASTA = [os.path.join(config.get("database_dir", "."), "fasta", i) for i in REF if ".fasta" in i][0].rpartition(".")[0]
 REFMAP = [os.path.join(config.get("database_dir", "."), i) for i in REF if i.endswith(".map")][0]
 REFTRE = [os.path.join(config.get("database_dir", "."), i) for i in REF if i.endswith(".tre")][0]
 
 
 rule all:
     input:
-        # expand("%s/{database}" % config.get("database_dir", "."), database=REF),
+        # expand("%s/{filename}" % config.get("database_dir", "."), filename=REF),
         expand("README.html"),
         expand("PROTOCOL_VERSION")
 
@@ -189,26 +170,19 @@ rule download_reference_data:
         "%s/{filename}" % config.get("database_dir", ".")
     run:
         shell("curl 'https://zenodo.org/record/808727/files/{wildcards.filename}' -s > {output}")
-        if not REFERENCES["{wildcards.filename}"] == md5(output[0]):
+        if not REFERENCES[os.path.basename(output[0])] == md5(output[0]):
             raise OSError(2, "Invalid checksum", output[0])
 
 
 rule create_fasta_from_reference:
     input:
-        expand("%s/{database}" % config.get("database_dir", "."), database=REF)
+        BLASTREF
     output:
         REFFASTA
+    params:
+        db = lambda wildcards, input: os.path.splitext(input[0])[0]
     shell:
-        """blastdbcmd -db {output} -outfmt %f -entry all -out {output}"""
-
-
-rule make_blast_db:
-    input:
-        config["blast_fasta"]
-    output:
-        expand(config["blast_fasta"] + ".{idx}", idx=['nhr', 'nin', 'nsq'])
-    shell:
-        "makeblastdb -in {input} -dbtype nucl"
+        """blastdbcmd -db {params.db} -outfmt %f -entry all -out {output}"""
 
 
 rule count_raw_reads:
@@ -242,14 +216,13 @@ rule trim_and_filter_reads:
     log:
         "logs/{sample}_quality_filter.log"
     threads:
-        config.get("threads", 1)
+        config.get("small_threads", config.get("threads", 1))
     shell:
         """bbduk2.sh in={input.r1} in2={input.r2} out={output.r1} out2={output.r2} \
                {params.rref} {params.lref} {params.fref} mink={params.mink} qout=33 \
                stats={output.stats} hdist={params.hdist} k={params.k} \
                trimq={params.trimq} qtrim={params.qtrim} threads={threads} \
-               minlength={params.minlength} minbasefrequency={params.minbasefrequency} \
-               interleaved={params.interleaved} overwrite=true 2> {log}"""
+               minlength={params.minlength} overwrite=true 2> {log}"""
 
 
 rule count_filtered_reads:
@@ -274,10 +247,10 @@ rule merge_reads:
     log:
         "logs/{sample}_merge_reads.log"
     shell:
-        """vsearch -fastq_mergepairs {input.r1} -reverse {input.r2} \
-               -label_suffix \;sample={wildcards.sample}\; \
-               -fastq_minmergelen {params.minimum_merge_length} \
-               -fastqout {output} -log {log}"""
+        """vsearch --fastq_mergepairs {input.r1} --reverse {input.r2} \
+               --label_suffix \;sample={wildcards.sample}\; \
+               --fastq_minmergelen {params.minimum_merge_length} \
+               --fastqout {output} --log {log}"""
 
 
 rule count_merged_reads:
@@ -293,39 +266,66 @@ rule combine_merged_reads:
     input:
         expand("tmp/{sample}_merged.fastq", sample=SAMPLES)
     output:
-        "merged.fastq.gz"
+        "merged.fastq"
     shell:
-        "cat {input} | gzip {output}"
+        "cat {input} > {output}"
 
 
-rule filter_merged_fastq:
-    input:
-        "results/{eid}/merged.fastq.gz"
-    output:
-        "results/{eid}/merged_EE%s.fasta" % str(config.get("maximum_expected_error", 1))
-    version:
-        VSEARCH_VERSION
-    params:
-        maxee = config.get("maximum_expected_error", 1)
-    log:
-        "logs/fastq_filter.log"
-    shell:
-        """vsearch -fastq_filter {input} -fastaout {output} \
-               -fastq_maxee {params.maxee} -log {log}"""
+if config.get("perform_error_correction", True):
+
+    rule filter_merged_fastq:
+        input:
+            "merged.fastq"
+        output:
+            "merged_eefiltered.fastq"
+        version:
+            VSEARCH_VERSION
+        params:
+            maxee = config.get("maximum_expected_error", 1)
+        log:
+            "logs/fastq_filter.log"
+        shell:
+            """vsearch --fastq_filter {input} --fastqout {output} \
+                   --fastq_maxee {params.maxee} --log {log}"""
 
 
-rule compress_filtered_fasta:
-    input:
-        "results/{eid}/merged_EE%s.fasta" % str(config.get("maximum_expected_error", 1))
-    output:
-        "results/{eid}/merged_EE%s.fasta.gz" % str(config.get("maximum_expected_error", 1))
-    shell:
-        "gzip -f {input}"
+    rule run_error_correction:
+        input:
+            "merged_eefiltered.fastq"
+        output:
+            "merged.fa"
+        shadow:
+            "shallow"
+        params:
+             size = config.get("quorum_size", "200M"),
+             kmer_len = config.get("quorum_kmer_len", 24),
+             min_quality = config.get("quorum_min_quality", 5)
+        shell:
+            """quorum --threads {threads} --size {params.size} -k {params.kmer_len} \
+                   --min-quality {params.min_quality} --prefix merged -q 33 {input}"""
+
+
+else:
+
+    rule filter_merged_fastq:
+        input:
+            "merged.fastq"
+        output:
+            "merged.fa"
+        version:
+            VSEARCH_VERSION
+        params:
+            maxee = config.get("maximum_expected_error", 1)
+        log:
+            "logs/fastq_filter.log"
+        shell:
+            """vsearch --fastq_filter {input} --fastaout {output} \
+                   --fastq_maxee {params.maxee} --log {log}"""
 
 
 rule dereplicate_sequences:
     input:
-        "results/{eid}/merged_EE%s.fasta.gz" % str(config.get("maximum_expected_error", 1))
+        "merged.fa"
     output:
         temp("tmp/uniques.fasta")
     version:
@@ -393,11 +393,11 @@ else:
 rule run_blast:
     input:
         fasta = "OTU.fasta",
-        db = rules.make_blast_db.output
+        db = BLASTREF
     output:
-        "blast/blast_hits.txt"
+        "blast_hits.txt"
     params:
-        db = REFFASTA
+        db = lambda wildcards, input: os.path.splitext(input[1])[0]
     threads:
         config.get("threads", 1)
     shell:
@@ -407,16 +407,19 @@ rule run_blast:
 
 rule compute_lca:
     input:
-        rules.blast.output
+        fasta = "OTU.fasta",
+        hits = "blast_hits.txt",
+        map = REFMAP,
+        tre = REFTRE
     output:
-        "OTU_tax.fasta"
-        "tax.tab"
+        fasta = "OTU_tax.fasta",
+        tsv = "tax.tab"
     params:
         min_score = config.get("blast_minimum_bitscore", 100),
         top_fraction = config.get("blast_top_fraction", 0.95)
     shell:
         """hundo lca --min-score {params.min_score} --top-fraction {params.top_fraction} \
-               {input.fasta} {input.hits} {map} {tre} {output.fasta} {output.tab}"""
+               {input.fasta} {input.hits} {input.map} {input.tre} {output.fasta} {output.tsv}"""
 
 
 rule compile_counts:
