@@ -2,10 +2,6 @@ import bisect
 from collections import deque
 
 
-BLAST6 = ["qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart", "qend",
-          "sstart", "send", "evalue", "bitscore"]
-
-
 class BlastHits(object):
 
     def __init__(self, names=None, max_hits=10, top_fraction=None):
@@ -38,6 +34,7 @@ class BlastHits(object):
             name (str): hit identifier
             bitscore (str): bitscore for hit
         """
+        percent_id = float(percent_id)
         bitscore = float(bitscore)
 
         if self.top_fraction and self.bitscores:
@@ -60,7 +57,6 @@ class BlastHits(object):
             self.bitscores.insert(idx, bitscore)
             self.percent_ids.insert(idx, percent_id)
             self.names.insert(idx, name)
-
 
             if len(self.names) > self.max_hits:
                 # remove lowest bitscore
