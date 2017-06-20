@@ -6,6 +6,7 @@ channels:
 dependencies:
     - bbmap
     - biom-format
+    - biopython
     - blast
     - clustalo
     - fasttree
