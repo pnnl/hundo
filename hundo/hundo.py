@@ -6,7 +6,7 @@ import subprocess
 import yaml
 from collections import OrderedDict
 from hundo import __version__
-from hundo.classifier import Classifier
+from hundo.crest_classifier import run_crest_classifier
 
 
 logging.basicConfig(level=logging.INFO, datefmt="%Y-%m-%d %H:%M", format="[%(asctime)s %(levelname)s] %(message)s")
@@ -54,7 +54,7 @@ def make_config(config, database_dir, threads):
     with open(config, "w") as f:
         print(yaml.dump(conf, default_flow_style=False), file=f)
     logging.info("Configuration file written to %s" % config)
-    logging.info("For parameter definitions, please see our documentation at hundo.readthedocs.io")
+    logging.info("For parameter definitions, please see: https://hundo.rtfd.io")
 
 
 @cli.command("lca", short_help="runs LCA across BLAST hits")
@@ -65,17 +65,13 @@ def make_config(config, database_dir, threads):
 @click.argument("outfasta", type=click.Path())
 @click.argument("outtab", type=click.Path())
 @click.option("--min-score", type=int, default=100, show_default=True, help="minimum allowable bitscore")
-@click.option("--top-fraction", type=float, default=0.95, show_default=True, help="calculate LCA based on HSPS within this fraction of highest scoring HSP")
-def run_lca(fasta, blasthits, mapfile, trefile, outfasta, outtab, min_score=100, top_fraction=0.95):
+@click.option("--top-fraction", type=float, default=0.98, show_default=True, help="calculate LCA based on HSPS within this fraction of highest scoring HSP")
+@click.option("--filter-euks", is_flag=True, default=False, show_default=True, help="filter eukaryotic assigned OTUs")
+def run_lca(fasta, blasthits, mapfile, trefile, outfasta, outtab, min_score=100, top_fraction=0.98, filter_euks=False):
     """Classifies BLAST HSPs using associated newick tree with corresponding
     names and map.
     """
-    lca_classifier = Classifier(fasta)
-    lca_classifier.read_tree(mapfile, trefile)
-    lca_classifier.parse_blast(blasthits, top_fraction=top_fraction, min_bitscore=min_score)
-    lca_classifier.prune_unassigned()
-    lca_classifier.print_sequences(outfasta)
-    lca_classifier.print_table(outtab)
+    run_crest_classifier(fasta, blasthits, mapfile, trefile, outfasta, outtab, min_score, top_fraction, filter_euks)
 
 
 def get_snakefile():
