@@ -397,12 +397,13 @@ rule run_blast:
     output:
         "blast_hits.txt"
     params:
-        db = lambda wildcards, input: os.path.splitext(input[1])[0]
+        db = lambda wildcards, input: os.path.splitext(input[1])[0],
+        num_alignments = config.get("blast_num_alignments", 25)
     threads:
         config.get("threads", 1)
     shell:
-        """blastn -query {input.fasta} -db {params.db} -num_alignments 75 -outfmt 6 \
-               -out {output} -num_threads {threads}"""
+        """blastn -query {input.fasta} -db {params.db} -num_alignments {params.num_alignments} \
+               -outfmt 6 -out {output} -num_threads {threads}"""
 
 
 rule compute_lca:
