@@ -11,6 +11,7 @@ Contents:
    install
    getting_started
    parameters
+   results
 
 
 Indices and tables
