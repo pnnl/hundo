@@ -1,1 +1,2 @@
 include hundo/Snakefile
+include hundo/environment.yml
