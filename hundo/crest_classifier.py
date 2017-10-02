@@ -5,7 +5,6 @@ Written by: Lanzén A , Jørgensen SL, Huson D, Gorfer M, Grindhaug SH, Jonassen
 Licensed under: GNU GENERAL PUBLIC LICENSE, Version 3, 29 June 2007
 Codes: https://github.com/lanzen/CREST/tree/master/LCAClassifier/src/LCAClassifier
 """
-from __future__ import print_function
 import logging
 import re
 import sys
