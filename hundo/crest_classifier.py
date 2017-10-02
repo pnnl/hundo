@@ -139,7 +139,7 @@ class Tree(object):
     def get_depth(self, node):
         node = self.verify_node(node)
         pth = self.get_path(node)
-        if len(pth)==1 and pth[0] is self.tree.root:
+        if len(pth) == 1 and pth[0] is self.tree.root:
             return 0
         else:
             return len(pth)
@@ -214,7 +214,7 @@ def parse_blasthits(blasthits, otus, tre, min_score=155, top_fraction=0.98, euk_
         for hsp in blast_hits_fh:
             toks = dict(zip(BLAST6, hsp.strip().split("\t")))
             if float(toks["bitscore"]) < min_score: continue
-            hsps[toks["qseqid"]].add(toks["sseqid"], float(toks["pident"]), toks["bitscore"])
+            hsps[toks["qseqid"]].add(toks["sseqid"], float(toks["pident"]) / 100, toks["bitscore"])
 
     for otu_name, hits in hsps.items():
         otu = otus[otu_name]
@@ -251,6 +251,6 @@ def run_crest_classifier(fasta, blasthits, mapfile, trefile, outfasta, outtab, m
     with open(outfasta, "w") as fasta_out, open(outtab, "w") as tsv_out:
         for otu_id, otu in otus.items():
             taxonomy = tre.get_taxonomy(otu.classification)
-            full_name = "{name};tax={taxonomy}".format(name=otu.name, taxonomy=",".join(["%s__%s" % (abb, tax) for abb, tax in taxonomy.items()]))
+            full_name = "{name};tax={taxonomy}".format(name=otu.name.strip(";"), taxonomy=",".join(["%s__%s" % (abb, tax) for abb, tax in taxonomy.items()]))
             print(format_fasta_record(full_name, otu.sequence), file=fasta_out)
             print(otu_id, ";".join(["%s__%s" % (abb, tax) for abb, tax in taxonomy.items()]), sep="\t", file=tsv_out)
