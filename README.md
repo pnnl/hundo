@@ -8,3 +8,10 @@
 For complete documentation and install instructions, see:
 
     hundo.readthedocs.io
+
+# Install
+
+```
+conda install python=3.5 pyyaml snakemake biopython
+pip install hundo
+```
