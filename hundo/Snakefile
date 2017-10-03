@@ -34,7 +34,7 @@ def get_sample_files(config):
             if ".fq" in sample_id:
                 sample_id = fname.partition(".fq")[0]
             sample_id = sample_id.replace("_R1", "").replace("_r1", "").replace("_R2", "").replace("_r2", "")
-            sample_id = sample_id.replace("_", "-").replace(" ", "-")
+            sample_id = sample_id.replace(".", "_").replace(" ", "_").replace("-", "_")
 
             fq_path = os.path.join(fastq_dir, fname)
             if fq_path in seen: continue
@@ -167,9 +167,9 @@ REFTRE = [os.path.join(config.get("database_dir", "."), i) for i in REF if i.end
 rule all:
     input:
         # expand("%s/{filename}" % config.get("database_dir", "."), filename=REF),
-        # expand("README.html"),
-        "OTU.biom",
-        "OTU.tree",
+        expand("README.html"),
+        # "OTU.biom",
+        # "OTU.tree",
         expand("PROTOCOL-VERSION.txt")
 
 
@@ -299,7 +299,8 @@ rule filter_merged_reads:
     input:
         "tmp/{sample}_merged.fastq"
     output:
-        temp("tmp/{sample}_merged_filtered.fasta")
+        fa = temp("tmp/{sample}_merged_filtered.fasta"),
+        fq = temp("tmp/{sample}_merged_filtered.fastq")
     params:
         maxee = config.get("maximum_expected_error", 1),
         maxns = config.get("vsearch_maxns", 0)
@@ -309,12 +310,13 @@ rule filter_merged_reads:
         "logs/{sample}_fastq_filter.log"
     shell:
         """vsearch --fastq_filter {input} --fastq_maxee {params.maxee} \
-               --fastq_maxns {params.maxns} --fastaout {output}"""
+               --fastq_maxns {params.maxns} --fastaout {output.fa} \
+               --fastqout {output.fq}"""
 
 
 rule get_postfilter_fastq_stats:
     input:
-        "tmp/{sample}_merged_filtered.fasta"
+        "tmp/{sample}_merged_filtered.fastq"
     output:
         "logs/{sample}_merged_filtered_eestats.txt"
     conda:
@@ -337,7 +339,7 @@ rule dereplicate_sequences_by_sample:
         "logs/{sample}_dereplication.log"
     shell:
         """vsearch --derep_fulllength {input} --output {output} \
-               --strand plus --sizeout --relabel {wildcards.sample}_"""
+               --strand plus --sizeout --relabel {wildcards.sample}."""
 
 
 rule combine_merged_reads:
@@ -576,7 +578,6 @@ rule report:
         merged_counts = expand("logs/{sample}_merged.fastq.count", sample=SAMPLES)
     shadow:
         "shallow"
-    params:
 
 # author: Joe Brown
 # threads: 8
@@ -603,8 +604,10 @@ rule report:
     output:
         html = "README.html"
     run:
+        import csv
         from biom import parse_table
         from biom.util import compute_counts_per_sample_stats
+        from collections import Counter, defaultdict
         from operator import itemgetter
         from numpy import std
 
@@ -647,14 +650,14 @@ rule report:
         # stats from count files
         sample_counts = {}
 
-        for sample in params.samples:
+        for sample in SAMPLES:
             sample_counts[sample] = {}
             metrics = ["raw_counts", "filtered_counts", "merged_counts"]
             filepaths = ["logs/{sample}_R1.fastq.count".format(sample=sample),
                          "logs/{sample}_filtered_R1.fastq.count".format(sample=sample),
                          "logs/{sample}_merged.fastq.count".format(sample=sample)]
 
-            for metric, filepath in zip(metrics, filepaths)
+            for metric, filepath in zip(metrics, filepaths):
                 with open(filepath) as fh:
                     for line in fh:
                         sample_counts[sample][metric] = int(float(line.strip()))
@@ -664,10 +667,10 @@ rule report:
         filtered_counts = []
         merged_counts = []
         biom_counts = []
-        samps = []
+        ordered_sample_list = []
         # sort this by the raw counts total and get the strings for the report
         for s in sorted(sample_counts.items(), key=lambda k_v: k_v[1]['raw_counts']):
-            samps.append(s[0])
+            ordered_sample_list.append(s[0])
             raw_counts.append(s[1]['raw_counts'])
             filtered_counts.append(s[1]['filtered_counts'])
             merged_counts.append(s[1]['merged_counts'])
@@ -678,21 +681,62 @@ rule report:
                 biom_counts.append(0)
 
         # quoted strings within brackets
-        samples_str = "['%s']" % "', '".join(map(str, samps))
+        samples_str = "['%s']" % "', '".join(map(str, ordered_sample_list))
         # non-quoted ints or floats within brackets
         raw_counts_str = "[%s]" % ", ".join(map(str, raw_counts))
         filtered_counts_str = "[%s]" % ", ".join(map(str, filtered_counts))
         merged_counts_str = "[%s]" % ", ".join(map(str, merged_counts))
         biom_counts_str = "[%s]" % ", ".join(map(str, biom_counts))
 
+        # counts by taxonomic level
+        def levels_from_string(taxonomy):
+            level_dict = {}
+            for level in "kpcofgs":
+                level_dict[level] = taxonomy.partition("%s__" % level)[-1].partition(",")[0]
+            return level_dict
+
+        with open(input.file4) as fh:
+            reader = csv.DictReader(fh, delimiter="\t")
+            samples_counter = defaultdict(lambda: defaultdict(Counter))
+            tax_level_quantities = defaultdict(Counter)
+            for row in reader:
+                for k, v in row.items():
+                    if "OTU ID" in k or k == "taxonomy": continue
+                    row_tax_levels = levels_from_string(row["taxonomy"])
+                    for lvl in ["p", "c", "o"]:
+                        # sum the row in order to find top taxa
+                        tax_level_quantities[lvl][row_tax_levels[lvl]] += int(v)
+                        samples_counter[k][lvl][row_tax_levels[lvl]] += int(row[k])
+
+        tax_strings = dict()
+        for level, level_counts in tax_level_quantities.items():
+            tax_strings[level] = ""
+            for assigned_level, count in level_counts.most_common():
+                series_data = []
+                tax_strings[level] += "name: '%s', " % assigned_level if not assigned_level == "?" else "name: 'Unassigned', "
+                for sample in ordered_sample_list:
+                    series_data.append(samples_counter[sample][level][assigned_level])
+                assert len(series_data) == len(ordered_sample_list)
+                tax_strings[level] += "data: [%s] " % ",".join([str(i) for i in series_data])
+                tax_strings[level] += "},{"
+        for lvl in ["p", "c", "o"]:
+            tax_strings[lvl] = tax_strings[lvl].strip("},{")
+        phylum_str = tax_strings["p"]
+        class_str = tax_strings["c"]
+        order_str = tax_strings["o"]
+
         report("""
         =============================================================
-        ``hundo`` README
+        hundo_ - Experiment Summary
         =============================================================
+
+        .. _hundo: https://github.com/pnnl/hundo
 
         .. raw:: html
 
-            body {
+            <style type="text/css">
+
+            body {{
               font-family: Helvetica, arial, sans-serif;
               font-size: 14px;
               line-height: 1.6;
@@ -702,49 +746,49 @@ rule report:
               /*padding: 30px;*/
               color: #333;
               margin: 0px;
-            }
+            }}
 
-            /*body > *:first-child {
+            /*body > *:first-child {{
               margin-top: 0 !important;
-            }
+            }}
 
-            body > *:last-child {
+            body > *:last-child {{
               margin-bottom: 0 !important;
-            }*/
+            }}*/
 
-            body>div .section::before {
+            body>div .section::before {{
               content:"";
               display:block;
               height:80px; /* fixed header height*/
               margin:-80px 0 0; /* negative fixed header height */
-            }
+            }}
 
-            #summary::before {
+            #summary::before {{
               margin: 0;
-            }
+            }}
 
-            #contents {
+            #contents {{
               margin-top: 100px;
-            }
+            }}
 
-            .topic-title {
+            .topic-title {{
               font-size: 18pt;
-            }
+            }}
 
-            body > div > .section{
+            body > div > .section{{
               margin-left: 22%;
               margin-bottom: 3em;
-            }
+            }}
 
-            div.section {
+            div.section {{
               width: 76%;
-            }
+            }}
 
-            #contents > p {
+            #contents > p {{
               display: none;
-            }
+            }}
 
-            #contents {
+            #contents {{
               margin-top: 80px;
               padding-left: 0px;
               width: 20%;
@@ -752,29 +796,29 @@ rule report:
               height: 100%; /* Full height */
               position: fixed; /* Make it stick, even on scroll */
               overflow: auto; /* Enable scrolling if the sidenav has too much content */
-            }
+            }}
 
-            #contents ul {
+            #contents ul {{
               list-style-type: none;
-            }
+            }}
 
-            #contents ul > li {
+            #contents ul > li {{
               font-size: 14pt;
-            }
+            }}
 
-            #contents ul > li a:hover {
+            #contents ul > li a:hover {{
               color: #151d26;
-            }
+            }}
 
-            #contents ul > li > ul > li {
+            #contents ul > li > ul > li {{
               font-size: 12pt;
-            }
+            }}
 
-            #summary {
+            #summary {{
               display: inline-block;
-            }
+            }}
 
-            h1.title {
+            h1.title {{
               margin-top: 0;
               position: fixed;
               z-index: 10;
@@ -782,36 +826,62 @@ rule report:
               color: #fff;
               background-color: #151d26;
               width: 100%;
-            }
+            }}
 
-            .one-col {
+            .one-col {{
               min-width: 310px;
               height: 500px;
               margin: 0 auto;
-            }
+            }}
 
-            .two-col-left {
+            .two-col-left {{
               height: 300px;
               width: 49%;
               float: left;
-            }
+            }}
 
-            .two-col-right {
+            .two-col-right {{
               height: 300px;
               width: 49%;
               float: right;
-            }
+            }}
 
-            a {
+            button {{
+              display: inline-block;
+              margin: 0 5px 0 0;
+              padding: 5px 25px;
+              font-size: 18px;
+              line-height: 1.8;
+              appearance: none;
+              box-shadow: none;
+              border-radius: 3px;
+              color: #fff;
+              background-color: #151d26;
+              border: none;
+            }}
+
+            button:focus {{
+              outline: none
+            }}
+
+            button:hover {{
+              background-color: #4183C4;
+            }}
+
+            button:active {{
+              background-color: #27496d;
+            }}
+
+            a {{
               color: #4183C4;
               text-decoration: none;
-            }
+            }}
 
-            a.absent {
+            a.absent {{
               color: #cc0000;
-            }
+            }}
 
-            a.anchor {
+            a.anchor {{
               /*display: block;*/
               padding-left: 30px;
               margin-left: -30px;
@@ -820,230 +890,230 @@ rule report:
               top: 0;
               left: 0;
               bottom: 0;
-            }
+            }}
 
-            h1, h2, h3, h4, h5, h6 {
+            h1, h2, h3, h4, h5, h6 {{
               margin: 20px 0 10px;
               padding: 0;
               font-weight: bold;
               -webkit-font-smoothing: antialiased;
               cursor: text;
               position: relative;
-            }
+            }}
 
-            h1:hover a.anchor, h2:hover a.anchor, h3:hover a.anchor, h4:hover a.anchor, h5:hover a.anchor, h6:hover a.anchor {
+            h1:hover a.anchor, h2:hover a.anchor, h3:hover a.anchor, h4:hover a.anchor, h5:hover a.anchor, h6:hover a.anchor {{
               text-decoration: none;
-            }
+            }}
 
-            h1 tt, h1 code {
+            h1 tt, h1 code {{
               font-size: inherit;
-            }
+            }}
 
-            h2 tt, h2 code {
+            h2 tt, h2 code {{
               font-size: inherit;
-            }
+            }}
 
-            h3 tt, h3 code {
+            h3 tt, h3 code {{
               font-size: inherit;
-            }
+            }}
 
-            h4 tt, h4 code {
+            h4 tt, h4 code {{
               font-size: inherit;
-            }
+            }}
 
-            h5 tt, h5 code {
+            h5 tt, h5 code {{
               font-size: inherit;
-            }
+            }}
 
-            h6 tt, h6 code {
+            h6 tt, h6 code {{
               font-size: inherit;
-            }
+            }}
 
-            h1 {
+            h1 {{
               font-size: 28px;
               color: #151d26;
               border-bottom: 1px solid #cccccc;
-            }
+            }}
 
-            h2 {
+            h2 {{
               font-size: 24px;
               color: black;
-            }
+            }}
 
-            h3 {
+            h3 {{
               font-size: 18px;
-            }
+            }}
 
-            h4 {
+            h4 {{
               font-size: 16px;
-            }
+            }}
 
-            h5 {
+            h5 {{
               font-size: 14px;
-            }
+            }}
 
-            h6 {
+            h6 {{
               color: #777777;
               font-size: 14px;
-            }
+            }}
 
-            p, blockquote, ul, ol, dl, li, table, pre {
+            p, blockquote, ul, ol, dl, li, table, pre {{
               margin: 15px 0;
-            }
+            }}
 
-            hr {
+            hr {{
               background: transparent url("http://tinyurl.com/bq5kskr") repeat-x 0 0;
               border: 0 none;
               color: #cccccc;
               height: 4px;
               padding: 0;
-            }
+            }}
 
-            /*body > h2:first-child {
+            /*body > h2:first-child {{
               margin-top: 0;
               padding-top: 0;
-            }
+            }}
 
-            body > h1:first-child {
+            body > h1:first-child {{
               margin-top: 0;
               padding-top: 0;
-            }
+            }}
 
-            body > h1:first-child + h2 {
+            body > h1:first-child + h2 {{
               margin-top: 0;
               padding-top: 0;
-            }
+            }}
 
-            body > h3:first-child, body > h4:first-child, body > h5:first-child, body > h6:first-child {
+            body > h3:first-child, body > h4:first-child, body > h5:first-child, body > h6:first-child {{
               margin-top: 0;
               padding-top: 0;
-            }*/
+            }}*/
 
-            a:first-child h1, a:first-child h2, a:first-child h3, a:first-child h4, a:first-child h5, a:first-child h6 {
+            a:first-child h1, a:first-child h2, a:first-child h3, a:first-child h4, a:first-child h5, a:first-child h6 {{
               margin-top: 0;
               padding-top: 0;
-            }
+            }}
 
-            h1 p, h2 p, h3 p, h4 p, h5 p, h6 p {
+            h1 p, h2 p, h3 p, h4 p, h5 p, h6 p {{
               margin-top: 0;
-            }
+            }}
 
-            li p.first {
+            li p.first {{
               display: inline-block;
-            }
+            }}
 
-            /*ul, ol {
+            /*ul, ol {{
               padding-left: 30px;
-            }*/
+            }}*/
 
-            /*ul :first-child, ol :first-child {
+            /*ul :first-child, ol :first-child {{
               margin-top: 0;
-            }
+            }}
 
-            ul :last-child, ol :last-child {
+            ul :last-child, ol :last-child {{
               margin-bottom: 0;
-            }*/
+            }}*/
 
-            dl {
+            dl {{
               padding: 0;
-            }
+            }}
 
-            dl dt {
+            dl dt {{
               font-size: 14px;
               font-weight: bold;
               font-style: italic;
               padding: 0;
               margin: 15px 0 5px;
-            }
+            }}
 
-            dl dt:first-child {
+            dl dt:first-child {{
               padding: 0;
-            }
+            }}
 
-            dl dt > :first-child {
+            dl dt > :first-child {{
               margin-top: 0;
-            }
+            }}
 
-            dl dt > :last-child {
+            dl dt > :last-child {{
               margin-bottom: 0;
-            }
+            }}
 
-            dl dd {
+            dl dd {{
               margin: 0 0 15px;
               padding: 0 15px;
-            }
+            }}
 
-            dl dd > :first-child {
+            dl dd > :first-child {{
               margin-top: 0;
-            }
+            }}
 
-            dl dd > :last-child {
+            dl dd > :last-child {{
               margin-bottom: 0;
-            }
+            }}
 
-            blockquote {
+            blockquote {{
               border-left: 4px solid #dddddd;
               padding: 0 15px;
               color: #777777;
-            }
+            }}
 
-            blockquote > :first-child {
+            blockquote > :first-child {{
               margin-top: 0;
-            }
+            }}
 
-            blockquote > :last-child {
+            blockquote > :last-child {{
               margin-bottom: 0;
-            }
+            }}
 
-            table {
+            table {{
               padding: 0;
               border-spacing: 0;
               border-collapse: collapse;
-            }
-            table tr {
+            }}
+            table tr {{
               border-top: 1px solid #cccccc;
               background-color: white;
               margin: 0;
               padding: 0;
-            }
+            }}
 
-            table tr:nth-child(2n) {
+            table tr:nth-child(2n) {{
               background-color: #f8f8f8;
-            }
+            }}
 
-            table tr th {
+            table tr th {{
               font-weight: bold;
               border: 1px solid #cccccc;
               text-align: left;
               margin: 0;
               padding: 6px 13px;
-            }
+            }}
 
-            table tr td {
+            table tr td {{
               border: 1px solid #cccccc;
               text-align: left;
               margin: 0;
               padding: 6px 13px;
-            }
+            }}
 
-            table tr th :first-child, table tr td :first-child {
+            table tr th :first-child, table tr td :first-child {{
               margin-top: 0;
-            }
+            }}
 
-            table tr th :last-child, table tr td :last-child {
+            table tr th :last-child, table tr td :last-child {{
               margin-bottom: 0;
-            }
+            }}
 
-            img {
+            img {{
               max-width: 100%;
-            }
+            }}
 
-            span.frame {
+            span.frame {{
               display: block;
               overflow: hidden;
-            }
+            }}
 
-            span.frame > span {
+            span.frame > span {{
               border: 1px solid #dddddd;
               display: block;
               float: left;
@@ -1051,99 +1121,99 @@ rule report:
               margin: 13px 0 0;
               padding: 7px;
               width: auto;
-            }
+            }}
 
-            span.frame span img {
+            span.frame span img {{
               display: block;
               float: left;
-            }
+            }}
 
-            span.frame span span {
+            span.frame span span {{
               clear: both;
               color: #333333;
               display: block;
               padding: 5px 0 0;
-            }
+            }}
 
-            span.align-center {
+            span.align-center {{
               display: block;
               overflow: hidden;
               clear: both;
-            }
+            }}
 
-            span.align-center > span {
+            span.align-center > span {{
               display: block;
               overflow: hidden;
               margin: 13px auto 0;
               text-align: center;
-            }
+            }}
 
-            span.align-center span img {
+            span.align-center span img {{
               margin: 0 auto;
               text-align: center;
-            }
+            }}
 
-            span.align-right {
+            span.align-right {{
               display: block;
               overflow: hidden;
               clear: both;
-            }
+            }}
 
-            span.align-right > span {
+            span.align-right > span {{
               display: block;
               overflow: hidden;
               margin: 13px 0 0;
               text-align: right;
-            }
+            }}
 
-            span.align-right span img {
+            span.align-right span img {{
               margin: 0;
               text-align: right;
-            }
+            }}
 
-            span.float-left {
+            span.float-left {{
               display: block;
               margin-right: 13px;
               overflow: hidden;
               float: left;
-            }
+            }}
 
-            span.float-left span {
+            span.float-left span {{
               margin: 13px 0 0;
-            }
+            }}
 
-            span.float-right {
+            span.float-right {{
               display: block;
               margin-left: 13px;
               overflow: hidden;
               float: right;
-            }
+            }}
 
-            span.float-right > span {
+            span.float-right > span {{
               display: block;
               overflow: hidden;
               margin: 13px auto 0;
               text-align: right;
-            }
+            }}
 
-            code, tt {
+            code, tt {{
               margin: 0 2px;
               padding: 0 5px;
               white-space: nowrap;
               border: 1px solid #eaeaea;
               background-color: #f8f8f8;
               border-radius: 3px;
-            }
+            }}
 
-            pre code {
+            pre code {{
               margin: 0;
               padding: 0;
               white-space: pre;
               border: none;
               background: transparent;
-            }
+            }}
 
-            .highlight pre {
+            .highlight pre {{
               background-color: #f8f8f8;
               border: 1px solid #cccccc;
               font-size: 13px;
@@ -1151,9 +1221,9 @@ rule report:
               overflow: auto;
               padding: 6px 10px;
               border-radius: 3px;
-            }
+            }}
 
-            pre {
+            pre {{
               background-color: #f8f8f8;
               border: 1px solid #cccccc;
               font-size: 13px;
@@ -1161,16 +1231,18 @@ rule report:
               overflow: auto;
               padding: 6px 10px;
               border-radius: 3px;
-            }
+            }}
 
-            pre code, pre tt {
+            pre code, pre tt {{
               background-color: transparent;
               border: none;
-            }
+            }}
 
-            div#metadata {
+            div#metadata {{
                 text-align: right;
-            }
+            }}
+
+            </style>
 
             <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
             <script src="https://code.highcharts.com/highcharts.js"></script>
@@ -1182,7 +1254,10 @@ rule report:
                         type: 'column'
                     }},
                     title: {{
-                        text: 'Sequence Counts'
+                        text: 'Counts Per Sample By Processing Step'
+                    }},
+                    exporting: {{
+                        enabled: false
                     }},
                     xAxis: {{
                         categories: {samples_str},
@@ -1234,12 +1309,12 @@ rule report:
             }});
 
             $(function() {{
-              $('#library-sizes').highcharts({{
+              $('#library-sizes-plot').highcharts({{
                 chart: {{
                   type: 'column'
                 }},
                 title: {{
-                  text: 'Library Sizes'
+                  text: 'Distribution of Counts Across Libraries'
                 }},
                 legend: {{
                   enabled: false
@@ -1257,7 +1332,7 @@ rule report:
                       borderWidth: 0
                   }},
                   series: {{
-                      color: '#282828'
+                      color: '#434348'
                   }}
                 }},
                 xAxis: {{
@@ -1278,12 +1353,12 @@ rule report:
             }});
 
             $(function() {{
-              $('#otu-totals').highcharts({{
+              $('#otu-totals-plot').highcharts({{
                 chart: {{
                   type: 'column'
                 }},
                 title: {{
-                  text: 'OTU Totals'
+                  text: 'Distribution of Counts Across OTUs'
                 }},
                 legend: {{
                   enabled: false
@@ -1301,7 +1376,7 @@ rule report:
                       borderWidth: 0
                   }},
                   series: {{
-                      color: '#282828'
+                      color: '#434348'
                   }}
                 }},
                 xAxis: {{
@@ -1320,6 +1395,86 @@ rule report:
                             name: 'Observations',
                             data: binData({biom_observations})
                         }}]
+                }});
+            }});
+
+            $(function() {{
+              var chart = Highcharts.chart('taxonomy-plot', {{
+                    chart: {{
+                      type: 'column'
+                    }},
+                    title: {{
+                      text: 'Assigned Taxonomy per Sample'
+                    }},
+                    subtitle: {{
+                        text: 'Level: Phylum'
+                    }},
+                    legend: {{
+                      enabled: false
+                    }},
+                    credits: {{
+                      enabled: false
+                    }},
+                    exporting: {{
+                      enabled: false
+                    }},
+                    tooltip: {{}},
+                    plotOptions: {{
+                      column: {{
+                          pointPadding: 0.2,
+                          borderWidth: 0
+                      }},
+                      series: {{
+                          stacking: 'normal'
+                      }}
+                    }},
+                    xAxis: {{
+                      tickInterval: 1,
+                      categories: {samples_str},
+                    }},
+                    yAxis: {{
+                      min: 0,
+                    //   minorTickInterval: 0.1,
+                      title: {{
+                        text: 'Raw counts'
+                      }}
+                    }},
+                    series: [{{
+                        {phylum_str}
+                    }}]
+                }});
+
+                $('#phylum-btn').click(function () {{
+                    chart.update({{
+                        subtitle: {{
+                            text: 'Level: Phylum'
+                        }},
+                        series: [{{
+                            {phylum_str}
+                        }}]
+                    }});
+                }});
+
+                $('#class-btn').click(function () {{
+                    chart.update({{
+                        subtitle: {{
+                            text: 'Level: Class'
+                        }},
+                        series: [{{
+                            {class_str}
+                        }}]
+                    }});
+                }});
+
+                $('#order-btn').click(function () {{
+                    chart.update({{
+                        subtitle: {{
+                            text: 'Level: Order'
+                        }},
+                        series: [{{
+                            {order_str}
+                        }}]
+                    }});
                 }});
             }});
 
@@ -1371,6 +1526,7 @@ rule report:
             }}
             </script>
 
+
         .. contents::
             :backlinks: none
 
@@ -1381,21 +1537,82 @@ rule report:
             :file: {summary_csv}
             :header-rows: 1
 
+        Sequence Counts
+        ***************
+
         .. raw:: html
 
             <div id="raw-count-plot" class="one-col"></div>
+
+        Taxonomy
+        ********
+
+        .. raw:: html
+
+            <div id="taxonomy-plot" class="one-col"></div>
             <div>
-                <div id="library-sizes" class="two-col-left"></div>
-                <div id="otu-totals" class="two-col-right"></div>
+                <button id="phylum-btn">Phylum</button>
+                <button id="class-btn">Class</button>
+                <button id="order-btn">Order</button>
             </div>
+
+        Count Distribution
+        ******************
+
+        .. raw:: html
+
+            <div id="library-sizes-plot" class="two-col-left"></div>
+            <div id="otu-totals-plot" class="two-col-right"></div>
+
+
+        Methods
+        -------
+
+        ``hundo`` wraps a number of functions and its exact steps are
+        dependent upon a given user's configuration.
+
+        Paired-end sequence reads are quality trimmed and can be trimmed of
+        adapters and filtered of contaminant sequences using BBDuk2 of the
+        BBTools_ package by Brian Bushnell. Passing reads are merged using
+        VSEARCH_ then aggregated into a single FASTA file with headers
+        describing the origin and count of the sequence.
+
+        To create clusters, the aggregated, merged reads are dereplicated to
+        remove singletons by default using VSEARCH. Sequences are preclustered
+        into centroids using VSEARCH to accelerate chimera filtering. Chimera
+        filtering is completed in two steps: *de novo* and then reference
+        based. The reference by default is the entire annotation database.
+        Following chimera filtering, sequences are placed into clusters using
+        distance-based, greedy cluster with VSEARCH based on the allowable
+        percent difference of the configuration.
+
+        After OTU sequences have been determined, BLAST_ is used to align
+        sequences to the reference database. Reference databases were curated
+        by the CREST_ team and hundo incorporates the CREST LCA method.
+
+        Counts are assigned to OTUs using the global alignment method of
+        VSEARCH, which outputs the final OTU table as a tab-delimited text
+        file. The Biom_ command line tool is used to convert the tab table
+        to biom.
+
+        Multiple alignment of sequences is completed using `Clustal Omega`_.
+        A tree based on the aligned sequences is built using FastTree2_.
+
+        This workflow is built using Snakemake_ and makes use of Bioconda_
+        to install its dependencies.
+
+        .. _BBTools: https://sourceforge.net/projects/bbmap/
+        .. _VSEARCH: https://github.com/torognes/vsearch
+        .. _BLAST: https://blast.ncbi.nlm.nih.gov/Blast.cgi
+        .. _CREST: https://github.com/lanzen/CREST
+        .. _Biom: http://biom-format.org/
+        .. _Clustal Omega: http://www.clustal.org/omega/
+        .. _FastTree2: http://www.microbesonline.org/fasttree/
+        .. _Snakemake: https://snakemake.readthedocs.io/en/stable/
+        .. _Bioconda: https://bioconda.github.io/
 
         Output
         ------
-
-        Chimera Removal
-        ***************
-
-        {chimera_info}
 
         Biom Table
         **********
@@ -1408,9 +1625,6 @@ rule report:
             :file: {sample_summary_csv}
             :header-rows: 1
 
-        Taxonomy was assigned to the OTU sequences at an overall cutoff of {params.tax_cutoff}%.
-
-        Taxonomy database - {taxonomy_metadata}
 
         OTU Sequences
         *************
@@ -1422,57 +1636,11 @@ rule report:
         to generate the phylogenetic tree.
 
 
-        Methods
-        -------
-
-        Reads were quality filtered with BBDuk2 [3]
-        to remove adapter sequences and PhiX with matching kmer length of {params.kmer_len}
-        bp at a hamming distance of {params.ham_dist}. Reads shorter than {params.min_read_len} bp
-        were discarded. Reads were merged using USEARCH [4] with a minimum length
-        threshold of {params.min_merge_len} bp and maximum error rate of {params.max_ee}%. Sequences
-        were dereplicated (minimum sequence abundance of {params.min_seq_abundance}) and clustered
-        using the distance-based, greedy clustering method of USEARCH [5] at
-        SOME% pairwise sequence identity among operational taxonomic unit (OTU) member
-        sequences. De novo prediction of chimeric sequences was performed using USEARCH during
-        clustering. {taxonomy_assignment} {chimera_filtering}
-
-
-        References
-        ----------
-
-        1. Sievers F, Wilm A, Dineen D, Gibson TJ, Karplus K, Li W, Lopez R, McWilliam H, Remmert M, Söding J, et al. 2011. Fast, scalable generation of high-quality protein multiple sequence alignments using Clustal Omega. Mol Syst Biol 7: 539
-        2. Price MN, Dehal PS, Arkin AP. 2010. FastTree 2--approximately maximum-likelihood trees for large alignments. ed. A.F.Y. Poon. PLoS One 5: e9490
-        3. Bushnell, B. (2014). BBMap: A Fast, Accurate, Splice-Aware Aligner. URL https://sourceforge.net/projects/bbmap/
-
-
-        All Files
-        ---------
-
-        The results directory contains the following::
-
-                <results>/
-                ├── blast
-                │   ├── blast_hits.txt        # raw blast hits per OTU seed seq
-                │   ├── lca_assignments.txt   # raw lca results TSV from blast hits
-                ├── OTU.biom                  # tax annotated biom (no metadata, no normalization)
-                ├── OTU_tax.fasta             # otu seqs with tax in FASTA header
-                ├── OTU.txt                   # tab delimited otu table with taxonomy
-                ├── README.html               # results report when annotation method is 'blast'
-                ├── logs
-                │   ├── cluster_sequences.log
-                │   ├── fasttree.log
-                │   └── uniques.log
-                ├── OTU_aligned.fasta         # multiple alignment file of otu seed seqs
-                ├── OTU.fasta                 # otu seqs without taxonomy
-                ├── OTU.tree                  # newick tree of multiple alignment
-                ├── merged_EE?.fasta          # error corrected FASTA prior to clustering into OTU seqs
-                └── merged.fastq              # all sample reads merged into single file with updated headers
-
         Downloads
         ---------
 
         """, output.html, metadata="Author: " + config.get("author", "hundo"),
-        stylesheet=None, file1=input.file1, file2=input.file2, file3=input.file3,
+        stylesheet="", file1=input.file1, file2=input.file2, file3=input.file3,
         file4=input.file4)
 
 
