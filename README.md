@@ -12,6 +12,6 @@ For complete documentation and install instructions, see:
 # Install
 
 ```
-conda install python=3.5 pyyaml snakemake biopython
+conda install python=3.5 pyyaml snakemake biopython biom-format=2.1.5 numpy
 pip install hundo
 ```
