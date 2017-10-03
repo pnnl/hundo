@@ -45,7 +45,6 @@ def make_config(fastq_dir, config, adapters, contaminants, database_dir, threads
     conf["minimum_merge_length"] = 150
     conf["perform_error_correction"] = True
     conf["maximum_expected_error"] = 1
-    conf["denovo_chimera_filter"] = True
     conf["reference_chimera_filter"] = True
     conf["minimum_sequence_abundance"] = 2
     conf["percent_of_allowable_difference"] = 3
@@ -119,16 +118,16 @@ def run_annotate(config, fastq_dir, jobs, out_dir, no_conda, dryrun,
 
     cmd = ("snakemake --snakefile {snakefile} --directory {out_dir} "
            "--printshellcmds --jobs {jobs} --rerun-incomplete "
-           "--configfile '{config}' --nolock {conda} "
-           "--config fastq_dir={fq_dir} {add_args}{dryrun} "
+           "--configfile '{config}' --nolock {conda} {dryrun} "
+           "--config fastq_dir={fq_dir} {add_args} "
            "{args}").format(snakefile=get_snakefile(),
                             out_dir=os.path.realpath(out_dir),
                             jobs=jobs,
                             config=os.path.realpath(config),
                             conda="" if no_conda else "--use-conda",
                             fq_dir=os.path.realpath(fastq_dir),
+                            dryrun="--dryrun" if dryrun else "",
                             add_args="" if snakemake_args and snakemake_args[0].startswith("-") else "--",
-                            dryrun="dryrun" if dryrun else "",
                             args=" ".join(snakemake_args))
     logging.info("Executing: " + cmd)
     subprocess.check_call(cmd, shell=True)
