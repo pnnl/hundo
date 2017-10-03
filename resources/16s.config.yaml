@@ -1,6 +1,5 @@
 author: "Joe Brown (joe.brown@pnnl.gov)"
 threads: 24
-threads_small: 4
 # reference databases will be downloaded here
 database_dir: /pic/projects/mint/references/hundo
 
@@ -18,12 +17,9 @@ reduced_kmer_min: 8
 minimum_passing_read_length: 100
 minimum_base_quality: 10
 minimum_merge_length: 150
-perform_error_correction: true
 # after merging; the allowable limit of erroneous bases; accepts fractions as well
 maximum_expected_error: 1
-# 'true' of 'false'
-denovo_chimera_filter: true
-# define a path, set to true to use blast reference, or set to false to skip
+# define a path or set to true to use blast reference
 reference_chimera_filter: true
 
 ## CLUSTERING
