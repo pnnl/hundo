@@ -166,10 +166,7 @@ REFTRE = [os.path.join(config.get("database_dir", "."), i) for i in REF if i.end
 
 rule all:
     input:
-        # expand("%s/{filename}" % config.get("database_dir", "."), filename=REF),
-        expand("README.html"),
-        # "OTU.biom",
-        # "OTU.tree",
+        expand("summary.html"),
         expand("PROTOCOL-VERSION.txt")
 
 
@@ -602,7 +599,7 @@ rule report:
 # read_identity_requirement: .97
 
     output:
-        html = "README.html"
+        html = "summary.html"
     run:
         import csv
         from biom import parse_table
@@ -724,6 +721,24 @@ rule report:
         phylum_str = tax_strings["p"]
         class_str = tax_strings["c"]
         order_str = tax_strings["o"]
+
+        # fastq ee stats
+        ee_stats = defaultdict(lambda: defaultdict(list))
+        for stats_file in input.fastq_stats_pre + input.fastq_stats_post:
+            status = "post" if stats_file.endswith("filtered_eestats.txt") else "pre"
+            sample_name = stats_file.partition("logs/")[-1].partition("_merged")[0]
+            with open(stats_file) as fh:
+                reader = csv.DictReader(fh, delimiter="\t")
+                for row in reader:
+                    ee_stats[status][sample_name].append(row["Max_EE"])
+        ee_qual_str = ""
+        for status, sample_data in ee_stats.items():
+            color = "#3366cc" if status == "pre" else "#dc3912"
+            for sample_name, sample_stats in sample_data.items():
+                ee_qual_str += "name: '%s', " % sample_name
+                ee_qual_str += "data: [%s], " % ",".join(sample_stats)
+                ee_qual_str += "color: '%s' },{" % color
+        ee_qual_str.strip("},{")
 
         report("""
         =============================================================
@@ -870,6 +885,16 @@ rule report:
 
             button:active {{
               background-color: #27496d;
+            }}
+
+            .legend-rect {{
+                width: 20px;
+                height: 20px;
+                margin-right: 8px;
+                margin-left: 20px;
+                float: left;
+                -webkit-border-radius: 2px;
+                border-radius: 2px;
             }}
 
             a {{
@@ -1248,6 +1273,13 @@ rule report:
             <script src="https://code.highcharts.com/highcharts.js"></script>
             <script src="https://code.highcharts.com/modules/exporting.js"></script>
             <script type="text/javascript">
+
+            Highcharts.theme = {{
+                colors: ["#3366cc", "#dc3912", "#ff9900", "#109618", "#990099", "#0099c6", "#dd4477", "#66aa00", "#b82e2e", "#316395", "#994499", "#22aa99", "#aaaa11", "#6633cc", "#e67300", "#8b0707", "#651067", "#329262", "#5574a6", "#3b3eac"]
+            }};
+            Highcharts.setOptions(Highcharts.theme);
+
+
             $(function () {{
                 $('#raw-count-plot').highcharts({{
                     chart: {{
@@ -1330,10 +1362,10 @@ rule report:
                   column: {{
                       pointPadding: 0.2,
                       borderWidth: 0
-                  }},
-                  series: {{
-                      color: '#434348'
                   }}
+                  // series: {{
+                  //     color: '#434348'
+                  // }}
                 }},
                 xAxis: {{
                   title: {{
@@ -1374,10 +1406,10 @@ rule report:
                   column: {{
                       pointPadding: 0.2,
                       borderWidth: 0
-                  }},
-                  series: {{
-                      color: '#434348'
                   }}
+                  //series: {{
+                //      color: '#434348'
+                  //}}
                 }},
                 xAxis: {{
                   title: {{
@@ -1524,6 +1556,62 @@ rule report:
               }});
               return hData;
             }}
+
+            $(function() {{
+              $('#methods-ee-plot').highcharts({{
+                chart: {{
+                  type: 'line'
+                }},
+                title: {{
+                  text: 'Maximum Expected Error Rates Before and After EE Filter'
+                }},
+                legend: {{
+                  enabled: false
+                }},
+                credits: {{
+                  enabled: false
+                }},
+                exporting: {{
+                  enabled: false
+                }},
+                tooltip: {{
+                    headerFormat: '',
+                    pointFormat: '<div style="color:{{series.color}};padding:0">{{series.name}}</div>',
+                    footerFormat: '<div style="font-size:10px"><b>EE: {{point.y:.1f}}</b></div><div style="font-size:10px">Position: {{point.key}}</div>',
+                    useHTML: true
+                }},
+                plotOptions: {{
+                  column: {{
+                      pointPadding: 0.2,
+                      borderWidth: 0
+                  }},
+                  series: {{
+                      label: {{
+                        enabled: false
+                      }},
+                      line: {{
+                        marker: {{
+                            enabled: false
+                        }}
+                      }}
+                  }}
+                }},
+                xAxis: {{
+                  title: {{
+                    text: 'Position'
+                  }}
+                }},
+                yAxis: {{
+                  title: {{
+                    text: 'Expected Error'
+                  }}
+                }},
+                series: [{{
+                            {ee_qual_str}
+                        }}]
+              }});
+            }});
+
             </script>
 
 
@@ -1573,9 +1661,22 @@ rule report:
 
         Paired-end sequence reads are quality trimmed and can be trimmed of
         adapters and filtered of contaminant sequences using BBDuk2 of the
-        BBTools_ package by Brian Bushnell. Passing reads are merged using
+        BBTools_ package. Passing reads are merged using
         VSEARCH_ then aggregated into a single FASTA file with headers
         describing the origin and count of the sequence.
+
+        Reads are filtered again based on expected error rates:
+
+        .. raw:: html
+
+            <div id="methods-ee-plot" class="one-col"></div>
+            <div style="display: inline-block; max-width: 800px; min-width: 300px;">
+                <div class="legend-rect" style="background-color: #3366cc;"></div>
+                <div style="float: left;">Before EE Filter</div>
+                <div class="legend-rect" style="background-color: #dc3912;"></div>
+                <div>After EE Filter</div>
+            </div>
+
 
         To create clusters, the aggregated, merged reads are dereplicated to
         remove singletons by default using VSEARCH. Sequences are preclustered
@@ -1611,30 +1712,59 @@ rule report:
         .. _Snakemake: https://snakemake.readthedocs.io/en/stable/
         .. _Bioconda: https://bioconda.github.io/
 
-        Output
-        ------
 
-        Biom Table
-        **********
+        Output Files
+        ------------
 
-        Counts observed per sample as represented in the biom file (file1_). This count is
-        representative of quality filtered reads that were assigned per sample to OTU seed
-        sequences.
+        Not all files written by the workflow are contained within the
+        Downloads section of this page to minimize the size of the this
+        document. Other output files are described and are written to the
+        results directory.
+
+        Attached
+        ********
+
+        **OTU.biom**
+
+        Biom table with raw counts per sample and their associated
+        taxonomic assignment formatted to be compatible with downstream tools
+        like phyloseq_.
 
         .. csv-table::
             :file: {sample_summary_csv}
             :header-rows: 1
 
+        .. _phyloseq: https://joey711.github.io/phyloseq/
 
-        OTU Sequences
-        *************
+        **OTU.fasta**
 
-        The OTU sequences are available in FASTA format (file2_) and aligned as newick tree
-        (file3_).
+        Representative DNA sequences of each OTU.
 
-        To build the tree, sequences were aligned using Clustalo [1] and FastTree2 [2] was used
-        to generate the phylogenetic tree.
+        **OTU.tree**
 
+        Newick tree representation of aligned OTU sequences.
+
+        **OTU.txt**
+
+        Tab-delimited text table with columns OTU ID, a column for each sample,
+        and taxonomy assignment in the final column as a comma delimited list.
+
+        Others
+        ******
+
+        **OTU_aligned.fasta**
+
+        OTU sequences after alignment using Clustal Omega.
+
+        **all-sequences.fasta**
+
+        Quality-controlled, dereplicated DNA sequences of all samples. The
+        header of each record identifies the sample of origin and the count
+        resulting from dereplication.
+
+        **blast-hits.txt**
+
+        The BLAST assignments per OTU sequence.
 
         Downloads
         ---------
