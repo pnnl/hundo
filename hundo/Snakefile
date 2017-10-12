@@ -221,10 +221,10 @@ rule trim_and_filter_reads:
         lref = "lref=%s" % config.get("filter_adapters") if config.get("filter_adapters") else "",
         rref = "rref=%s" % config.get("filter_adapters") if config.get("filter_adapters") else "",
         fref = "fref=%s" % config.get("filter_contaminants") if config.get("filter_contaminants") else "",
-        mink = config.get("reduced_kmer_min", 8),
+        mink = "" if not config.get("filter_adapters") and not config.get("filter_contaminants") else "mink=%d" % config.get("reduced_kmer_min", 8),
         trimq = config.get("minimum_base_quality", 10),
-        hdist = config.get("allowable_kmer_mismatches", 1),
-        k = config.get("reference_kmer_match_length", 31),
+        hdist = "" if not config.get("filter_adapters") and not config.get("filter_contaminants") else "hdist=%d" % config.get("allowable_kmer_mismatches", 1),
+        k = "" if not config.get("filter_adapters") and not config.get("filter_contaminants") else "k=%d" % config.get("reference_kmer_match_length", 27),
         qtrim = config.get("qtrim", "rl"),
         minlength = config.get("minimum_passing_read_length", 100)
     conda:
@@ -234,11 +234,12 @@ rule trim_and_filter_reads:
     threads:
         config.get("threads", 1)
     shell:
-        """bbduk2.sh in={input.r1} in2={input.r2} out={output.r1} out2={output.r2} \
-               {params.rref} {params.lref} {params.fref} mink={params.mink} qout=33 \
-               stats={output.stats} hdist={params.hdist} k={params.k} \
-               trimq={params.trimq} qtrim={params.qtrim} threads={threads} \
-               minlength={params.minlength} overwrite=true 2> {log}"""
+        """bbduk2.sh in={input.r1} in2={input.r2} out={output.r1} \
+               out2={output.r2} {params.rref} {params.lref} {params.fref} \
+               {params.mink} qout=33 stats={output.stats} {params.hdist} \
+               {params.k} trimq={params.trimq} qtrim={params.qtrim}
+               threads={threads} minlength={params.minlength} \
+               overwrite=true 2> {log}"""
 
 
 rule count_filtered_reads:
@@ -575,29 +576,23 @@ rule report:
         merged_counts = expand("logs/{sample}_merged.fastq.count", sample=SAMPLES)
     shadow:
         "shallow"
-
-# author: Joe Brown
-# threads: 8
-# database_dir: /Users/brow015/devel/hundo/data/reference
-# filter_adapters: /Users/brow015/devel/hundo/resources/adapters.fa
-# filter_contaminants: /Users/brow015/devel/hundo/resources/phix174_ill.ref.fa.gz
-# allowable_kmer_mismatches: 1
-# reference_kmer_match_length: 31
-# reduced_kmer_min: 8
-# minimum_passing_read_length: 100
-# minimum_base_quality: 10
-# minimum_merge_length: 150
-# perform_error_correction: true
-# maximum_expected_error: 1
-# # true for whole reference database or file path to FASTA to use other
-# reference_chimera_filter: true
-# minimum_sequence_abundance: 2
-# percent_of_allowable_difference: 3
-# reference_database: silva
-# blast_minimum_bitscore: 100
-# blast_top_fraction: 0.95
-# read_identity_requirement: .97
-
+    params:
+        filter_adapters = "None" if not config.get("filter_adapters") else config.get("filter_adapters"),
+        filter_contaminants = "None" if not config.get("filter_contaminants") else config.get("filter_contaminants"),
+        allowable_kmer_mismatches = config.get("allowable_kmer_mismatches"),
+        reference_kmer_match_length = config.get("reference_kmer_match_length"),
+        reduced_kmer_min = config.get("reduced_kmer_min"),
+        minimum_passing_read_length = config.get("minimum_passing_read_length"),
+        minimum_base_quality = config.get("minimum_base_quality"),
+        minimum_merge_length = config.get("minimum_merge_length"),
+        maximum_expected_error = config.get("maximum_expected_error"),
+        reference_chimera_filter = config.get("reference_chimera_filter"),
+        minimum_sequence_abundance = config.get("minimum_sequence_abundance"),
+        percent_of_allowable_difference = config.get("percent_of_allowable_difference"),
+        reference_database = config.get("reference_database"),
+        blast_minimum_bitscore = config.get("blast_minimum_bitscore"),
+        blast_top_fraction = config.get("blast_top_fraction"),
+        read_identity_requirement = config.get("read_identity_requirement")
     output:
         html = "summary.html"
     run:
@@ -606,11 +601,9 @@ rule report:
         from biom.util import compute_counts_per_sample_stats
         from collections import Counter, defaultdict
         from operator import itemgetter
-        from numpy import std
 
         # stats from the biom table
         summary_csv = "stats.csv"
-        sample_summary_csv = "samplesummary.csv"
         samples_csv = "samples.csv"
         biom_per_sample_counts = {}
         biom_libraries = ""
@@ -618,8 +611,7 @@ rule report:
 
         with open(input.file1) as fh, \
             open(summary_csv, 'w') as sumout, \
-            open(samples_csv, 'w') as samout, \
-            open(sample_summary_csv, 'w') as samplesum:
+            open(samples_csv, 'w') as samout:
 
             bt = parse_table(fh)
             biom_libraries = "[%s]" % ", ".join(map(str, bt.sum("sample")))
@@ -634,12 +626,6 @@ rule report:
             print(len(bt.ids()), len(bt.ids(axis='observation')),
                   sum(sample_counts), bt.get_table_density(), sep=",",
                   file=sumout)
-
-            # sample summary within OTU table
-            print("Minimum Count", "Maximum Count", "Median", "Mean",
-                  "Standard Deviation", sep=",", file=samplesum)
-            print(stats[0], stats[1], stats[2], stats[3], std(sample_counts),
-                  sep=",", file=samplesum)
 
             for k, v in sorted(stats[4].items(), key=itemgetter(1)):
                 print(k, '%1.1f' % v, sep=",", file=samout)
@@ -1712,6 +1698,29 @@ rule report:
         .. _Snakemake: https://snakemake.readthedocs.io/en/stable/
         .. _Bioconda: https://bioconda.github.io/
 
+        Configuration
+        -------------
+
+        ::
+
+            filter_adapters: {params.filter_adapters}
+            filter_contaminants: {params.filter_contaminants}
+            allowable_kmer_mismatches: {params.allowable_kmer_mismatches}
+            reference_kmer_match_length: {params.reference_kmer_match_length}
+            allowable_kmer_mismatches: {params.allowable_kmer_mismatches}
+            reference_kmer_match_length: {params.reference_kmer_match_length}
+            reduced_kmer_min: {params.reduced_kmer_min}
+            minimum_passing_read_length: {params.minimum_passing_read_length}
+            minimum_base_quality: {params.minimum_base_quality}
+            minimum_merge_length: {params.minimum_merge_length}
+            maximum_expected_error: {params.maximum_expected_error}
+            reference_chimera_filter: {params.reference_chimera_filter}
+            minimum_sequence_abundance: {params.minimum_sequence_abundance}
+            percent_of_allowable_difference: {params.percent_of_allowable_difference}
+            reference_database: {params.reference_database}
+            blast_minimum_bitscore: {params.blast_minimum_bitscore}
+            blast_top_fraction: {params.blast_top_fraction}
+            read_identity_requirement: {params.read_identity_requirement}
 
         Output Files
         ------------
@@ -1729,10 +1738,6 @@ rule report:
         Biom table with raw counts per sample and their associated
         taxonomic assignment formatted to be compatible with downstream tools
         like phyloseq_.
-
-        .. csv-table::
-            :file: {sample_summary_csv}
-            :header-rows: 1
 
         .. _phyloseq: https://joey711.github.io/phyloseq/
 
