@@ -139,7 +139,7 @@ def get_snakefile():
 @click.option("-kl",
               "--reference-kmer-match-length",
               type=int,
-              default=31,
+              default=27,
               show_default=True,
               help="length of kmer to search against contaminant sequences")
 @click.option(
@@ -212,7 +212,7 @@ def get_snakefile():
 @click.option("-mb",
               "--blast-minimum-bitscore",
               default=100,
-              type=float,
+              type=int,
               show_default=True,
               help="filter out alignments below this bitscore threshold")
 @click.option(
