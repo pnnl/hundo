@@ -56,7 +56,7 @@ class Tree(object):
                        re.compile("\D\D\D\D\d\d\d\d\d\d\d\d\Z")]
 
         # Read nodes from .map file (id\t name\t cutoff)
-        with open(mapfile) as fh:
+        with open(mapfile, encoding="ISO-8859-1") as fh:
             for line in fh:
                 toks = line.strip().split("\t")
                 node_id = toks[0]
