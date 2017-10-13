@@ -48,7 +48,11 @@ def get_sample_files(config):
                     logger.error("R1 path was found; R2 [%s] was not. Exiting." % r2_path)
                     sys.exit(1)
                 seen.add(r2_path)
-                fastq_paths = {"r1": fq_path, "r2": r2_path}
+                if os.path.getsize(fq_path) < config.get("prefilter_file_size", 100000) or \
+                   os.path.getsize(r2_path) < config.get("prefilter_file_size", 100000):
+                    logger.info("%s is being omitted from analysis due to its file size." % sample_id)
+                else:
+                    fastq_paths = {"r1": fq_path, "r2": r2_path}
 
             elif "_R2" in fname or "_r2" in fname:
                 r1_path = os.path.join(fastq_dir, fname.replace("_R2", "_R1").replace("_r2", "_r1"))
@@ -59,7 +63,11 @@ def get_sample_files(config):
                     logger.error("R2 path was found; R1 [%s] was not. Exiting." % r1_path)
                     sys.exit(1)
                 seen.add(r1_path)
-                fastq_paths = {"r1": r1_path, "r2": fq_path}
+                if os.path.getsize(fq_path) < config.get("prefilter_file_size", 100000) or \
+                   os.path.getsize(r1_path) < config.get("prefilter_file_size", 100000):
+                    logger.info("%s is being omitted from analysis due to its file size." % sample_id)
+                else:
+                    fastq_paths = {"r1": r1_path, "r2": fq_path}
 
             else:
                 logger.error("Unable to determine read index for [%s] as it is missing '_R1' or '_R2' designation. Exiting." % fname)
@@ -192,7 +200,7 @@ rule create_fasta_from_reference:
     output:
         REFFASTA
     params:
-        db = lambda wildcards, input: os.path.splitext(input[0])[0]
+        db = lambda wildcards, input: os.path.join(os.path.dirname(input[0]), "%s.fasta" % os.path.basename(input[0]).partition(".")[0])
     conda:
         CONDAENV
     shell:
@@ -782,7 +790,7 @@ rule report:
             }}
 
             div.section {{
-              width: 76%;
+              margin-right: 20px;
             }}
 
             #contents > p {{
@@ -813,10 +821,6 @@ rule report:
 
             #contents ul > li > ul > li {{
               font-size: 12pt;
-            }}
-
-            #summary {{
-              display: inline-block;
             }}
 
             h1.title {{
@@ -1300,7 +1304,7 @@ rule report:
                     }},
                     plotOptions: {{
                         column: {{
-                            pointPadding: 0.2,
+                            pointPadding: 0.1,
                             borderWidth: 0
                         }}
                     }},
@@ -1346,7 +1350,7 @@ rule report:
                 tooltip: {{}},
                 plotOptions: {{
                   column: {{
-                      pointPadding: 0.2,
+                      pointPadding: 0.1,
                       borderWidth: 0
                   }}
                   // series: {{
@@ -1390,7 +1394,7 @@ rule report:
                 tooltip: {{}},
                 plotOptions: {{
                   column: {{
-                      pointPadding: 0.2,
+                      pointPadding: 0.1,
                       borderWidth: 0
                   }}
                   //series: {{
@@ -1439,7 +1443,8 @@ rule report:
                     tooltip: {{}},
                     plotOptions: {{
                       column: {{
-                          pointPadding: 0.2,
+                          pointPadding: 0.0,
+                          groupPadding: 0.05,
                           borderWidth: 0
                       }},
                       series: {{
@@ -1568,7 +1573,7 @@ rule report:
                 }},
                 plotOptions: {{
                   column: {{
-                      pointPadding: 0.2,
+                      pointPadding: 0.1,
                       borderWidth: 0
                   }},
                   series: {{
