@@ -71,6 +71,11 @@ def get_snakefile():
              context_settings=dict(ignore_unknown_options=True),
              short_help="run annotation protocol")
 @click.argument("fastq-dir", type=click.Path(exists=True))
+@click.option("--prefilter-file-size",
+    default=100000,
+    type=int,
+    show_default=True,
+    help="any file smaller than this in bytes is omitted from being processed")
 @click.option(
     "-j",
     "--jobs",
@@ -207,7 +212,7 @@ def get_snakefile():
     type=click.Choice(["silva", "greengenes", "unite"]),
     show_default=True,
     help=
-    "Two 16S databases are supported along with Unite for ITS; references will be downloaded as needed"
+    "two 16S databases are supported along with Unite for ITS; references will be downloaded as needed"
 )
 @click.option("-mb",
               "--blast-minimum-bitscore",
@@ -235,8 +240,8 @@ def get_snakefile():
 )
 @click.argument("snakemake_args", nargs=-1, type=click.UNPROCESSED)
 def run_annotate(
-        fastq_dir, jobs, out_dir, no_conda, dryrun, author, threads,
-        database_dir, filter_adapters, filter_contaminants,
+        fastq_dir, prefilter_file_size, jobs, out_dir, no_conda, dryrun,
+        author, threads, database_dir, filter_adapters, filter_contaminants,
         allowable_kmer_mismatches, reference_kmer_match_length,
         reduced_kmer_min, minimum_passing_read_length, minimum_base_quality,
         minimum_merge_length, maximum_expected_error, reference_chimera_filter,
@@ -247,7 +252,6 @@ def run_annotate(
     For complete documentation and parameter definitions, please see:
     https://hundo.rtfd.io
     """
-
     database_dir = os.path.realpath(database_dir)
     filter_adapters = os.path.realpath(
         filter_adapters) if filter_adapters else ""
@@ -257,7 +261,7 @@ def run_annotate(
     cmd = ("snakemake --snakefile {snakefile} --directory {out_dir} "
            "--printshellcmds --jobs {jobs} --rerun-incomplete "
            "--nolock {conda} {dryrun} "
-           "--config fastq_dir={fq_dir} author={author} threads={threads} "
+           "--config fastq_dir={fq_dir} author='{author}' threads={threads} "
            "database_dir={database_dir} filter_adapters={filter_adapters} "
            "filter_contaminants={filter_contaminants} "
            "allowable_kmer_mismatches={allowable_kmer_mismatches} "
@@ -273,7 +277,8 @@ def run_annotate(
            "reference_database={reference_database} "
            "blast_minimum_bitscore={blast_minimum_bitscore} "
            "blast_top_fraction={blast_top_fraction} "
-           "read_identity_requirement={read_identity_requirement} {add_args} "
+           "read_identity_requirement={read_identity_requirement} "
+           "prefilter_file_size={prefilter_file_size} {add_args} "
            "{args}").format(
                snakefile=get_snakefile(),
                out_dir=os.path.realpath(out_dir),
@@ -300,6 +305,7 @@ def run_annotate(
                blast_minimum_bitscore=blast_minimum_bitscore,
                blast_top_fraction=blast_top_fraction,
                read_identity_requirement=read_identity_requirement,
+               prefilter_file_size=prefilter_file_size,
                add_args="" if snakemake_args and snakemake_args[
                    0].startswith("-") else "--",
                args=" ".join(snakemake_args))
