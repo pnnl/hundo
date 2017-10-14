@@ -17,7 +17,16 @@ logging.basicConfig(level=logging.INFO,
 @click.version_option(__version__)
 @click.pass_context
 def cli(obj):
-    """hundo"""
+    """Documentation is available at:
+
+        \b
+        https://hundo.rtfd.io
+
+    Issues can be submitted to:
+
+        \b
+        https://github.com/pnnl/hundo/issues
+    """
 
 
 @cli.command("lca", short_help="runs LCA across BLAST hits")
@@ -130,12 +139,12 @@ def get_snakefile():
               default="",
               show_default=True,
               help="file path to adapters FASTA to use for trimming read ends")
-@click.option("-fl",
+@click.option("-fc",
               "--filter-contaminants",
               default="",
               show_default=True,
               help="file path to FASTA to use for filtering reads")
-@click.option("-ms",
+@click.option("-ak",
               "--allowable-kmer-mismatches",
               type=int,
               default=1,
@@ -249,8 +258,19 @@ def run_annotate(
         reference_database, blast_minimum_bitscore, blast_top_fraction,
         read_identity_requirement, snakemake_args):
     """
+    Run annotation across paired-end sequence data contained in a directory.
+    Both R1 and R2 are expected to be present in the same directory and have
+    the same name except for the index ID (R1 and R2).
+
+    By using SILVA, you agree to their license terms which are available at:
+
+        \b
+        https://www.arb-silva.de/silva-license-information
+
     For complete documentation and parameter definitions, please see:
-    https://hundo.rtfd.io
+
+        \b
+        https://hundo.rtfd.io
     """
     database_dir = os.path.realpath(database_dir)
     filter_adapters = os.path.realpath(
