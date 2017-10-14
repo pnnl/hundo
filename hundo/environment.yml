@@ -1,0 +1,17 @@
+name: hundo_env
+channels:
+    - bioconda
+    - conda-forge
+    - defaults
+dependencies:
+    - python=3.5
+    - bbmap=37.17
+    - biom-format=2.1.5
+    - biopython
+    - blast=2.6.0
+    - bzip2=1.0.6
+    - clustalo=1.2.3
+    - fasttree=2.1.9
+    - numpy
+    - pyyaml
+    - vsearch=2.4.3

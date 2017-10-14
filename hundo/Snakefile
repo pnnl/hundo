@@ -1,0 +1,1908 @@
+import hashlib
+import os
+import subprocess
+import shutil
+import sys
+from snakemake.logging import logger
+from snakemake.utils import report
+
+
+def get_conda_env():
+    if config.get("environment"):
+        yml = config.get("environment")
+    else:
+        yml = os.path.join(os.path.dirname(os.path.abspath(workflow.snakefile)), "environment.yml")
+    if not os.path.exists(yml):
+        sys.exit("Unable to locate the environmental definitions file; tried %s" % yml)
+    return yml
+
+
+def get_sample_files(config):
+    fastq_dir = config.get("fastq_dir")
+    if not fastq_dir:
+        logger.error("'fastq_dir' has not been set -- this directory should contain your input FASTQs")
+        sys.exit(1)
+
+    logger.info("Finding samples in %s" % fastq_dir)
+
+    samples = dict()
+    seen = set()
+    for fname in os.listdir(fastq_dir):
+        if ".fastq" in fname or ".fq" in fname:
+
+            sample_id = fname.partition(".fastq")[0]
+            if ".fq" in sample_id:
+                sample_id = fname.partition(".fq")[0]
+            sample_id = sample_id.replace("_R1", "").replace("_r1", "").replace("_R2", "").replace("_r2", "")
+            sample_id = sample_id.replace(".", "_").replace(" ", "_").replace("-", "_")
+
+            fq_path = os.path.join(fastq_dir, fname)
+            if fq_path in seen: continue
+
+            if "_R1" in fname or "_r1" in fname:
+                r2_path = os.path.join(fastq_dir, fname.replace("_R1", "_R2").replace("_r1", "_r2"))
+                if r2_path == fq_path:
+                    logger.error("Unable to locate R2 for %s. Exiting." % fq_path)
+                    sys.exit(1)
+                if not os.path.exists(r2_path):
+                    logger.error("R1 path was found; R2 [%s] was not. Exiting." % r2_path)
+                    sys.exit(1)
+                seen.add(r2_path)
+                if os.path.getsize(fq_path) < config.get("prefilter_file_size", 100000) or \
+                   os.path.getsize(r2_path) < config.get("prefilter_file_size", 100000):
+                    logger.info("%s is being omitted from analysis due to its file size." % sample_id)
+                else:
+                    fastq_paths = {"r1": fq_path, "r2": r2_path}
+
+            elif "_R2" in fname or "_r2" in fname:
+                r1_path = os.path.join(fastq_dir, fname.replace("_R2", "_R1").replace("_r2", "_r1"))
+                if r1_path == fq_path:
+                    logger.error("Unable to locate R1 for %s. Exiting." % fq_path)
+                    sys.exit(1)
+                if not os.path.exists(r1_path):
+                    logger.error("R2 path was found; R1 [%s] was not. Exiting." % r1_path)
+                    sys.exit(1)
+                seen.add(r1_path)
+                if os.path.getsize(fq_path) < config.get("prefilter_file_size", 100000) or \
+                   os.path.getsize(r1_path) < config.get("prefilter_file_size", 100000):
+                    logger.info("%s is being omitted from analysis due to its file size." % sample_id)
+                else:
+                    fastq_paths = {"r1": r1_path, "r2": fq_path}
+
+            else:
+                logger.error("Unable to determine read index for [%s] as it is missing '_R1' or '_R2' designation. Exiting." % fname)
+                sys.exit(1)
+
+            if sample_id in samples:
+                logger.warning("Duplicate sample %s was found after renaming; skipping..." % sample_id)
+                continue
+
+            samples[sample_id] = fastq_paths
+    logger.info("Found %d samples for processing:\n" % len(samples))
+    samples_str = ""
+    for k, v in samples.items():
+        samples_str += "%s: %s; %s\n" % (k, v["r1"], v["r2"])
+    logger.info(samples_str)
+    return samples
+
+
+def get_cluster_sequences_input(wildcards):
+    return "chimera-filtered_denovo.fasta" if config.get("denova_chimera_filter") else "dereplicated-sequences.fasta"
+
+
+def get_run_reference_chimera_filter_inputs(wildcards):
+    if config.get("reference_chimera_filter") is True:
+        db = REFFASTA
+    else:
+        db = config.get("reference_chimera_filter")
+    if config.get("denovo_chimera_filter", True):
+        fasta = "chimera-filtered_denovo.fasta"
+    elif float(config.get("read_identity_requirement", 0.97)) * 100 < 99:
+        fasta = "preclustered.fasta"
+    else:
+        fasta = "dereplicated-sequences.fasta"
+    return {"fasta": fasta, "db": db}
+
+
+def filter_fastas(fasta1, uclust, fasta2, output):
+    """fasta1 is the larger set of reads to be filtered
+    by read IDs in uclust and fasta2"""
+
+    accepted_reads = set()
+
+    with open(fasta2) as fh:
+        for line in fh:
+            if line.startswith(">"):
+                name = line.strip().strip(">").partition(";")[0]
+                accepted_reads.add(name)
+
+    with open(uclust) as fh:
+        for line in fh:
+            toks = line.strip().split("\t")
+            if toks[9] == "*": continue
+            if toks[8] == "*": continue
+            a = toks[8].partition(";")[0]
+            b = toks[9].partition(";")[0]
+            if b in accepted_reads:
+                accepted_reads.add(a)
+
+    with open(fasta1) as fh, open(output, "w") as fo:
+        keep = False
+        for line in fh:
+            line = line.strip()
+            if line.startswith(">"):
+                name = line.strip(">").partition(";")[0]
+                if name in accepted_reads:
+                    keep = True
+                else:
+                    keep = False
+            if keep:
+                print(line, file=fo)
+
+
+def md5(fname):
+    # https://stackoverflow.com/questions/3431825/generating-an-md5-checksum-of-a-file
+    hash_md5 = hashlib.md5()
+    if not os.path.exists(fname):
+        return None
+    with open(fname, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
+
+PROTOCOL_VERSION = subprocess.check_output("hundo --version", shell=True).decode("utf-8").strip()
+SAMPLES = get_sample_files(config)
+CONDAENV = get_conda_env()
+REFERENCES = {"greengenes.fasta.nhr": "200f1b4356e59be524525e4ca83cefc1",
+              "greengenes.fasta.nin": "f41470ebc95c21f13b54f7b127ebe2ad",
+              "greengenes.fasta.nsq": "150b00866a87f44c8b33871be7cc6b98",
+              "greengenes.map": "cb49d30e2a00476f8bdaaa3eaec693ef",
+              "greengenes.tre": "b3a369edde911bf0aa848a842f736fce",
+              "silvamod128.fasta.nhr": "99d9b6817a9c6a0249fbb32a60e725ae",
+              "silvamod128.fasta.nin": "25d8d6587123aa7dbaabaa1299e481cc",
+              "silvamod128.fasta.nsq": "7e12efc4ab9019c9d79809861922a001",
+              "silvamod128.map": "00500c7f215a89a3240c907af4f75f33",
+              "silvamod128.tre": "340864d9d32e8561f75ec0b0a9a6c3d1",
+              "unite.fasta.nhr": "be55d7142d812abfe508bec8038dbbe8",
+              "unite.fasta.nin": "f8c3748280ee07cf28983ba8ec9df601",
+              "unite.fasta.nsq": "fe952b51a5a97445221f1287699cf33b",
+              "unite.map": "8f5b11fe1074109627e010418ffb467b",
+              "unite.tre": "3e1c586184e91a3cfa10a19c9855169c"}
+REF = [k for k in REFERENCES.keys() if k.startswith(config.get("reference_database", "silva"))]
+BLASTREF = [os.path.join(config.get("database_dir", "."), i) for i in REF]
+REFFASTA = [os.path.join(config.get("database_dir", "."), i) for i in REF if ".fasta" in i][0].rpartition(".")[0]
+REFMAP = [os.path.join(config.get("database_dir", "."), i) for i in REF if i.endswith(".map")][0]
+REFTRE = [os.path.join(config.get("database_dir", "."), i) for i in REF if i.endswith(".tre")][0]
+
+
+rule all:
+    input:
+        expand("summary.html"),
+        expand("PROTOCOL-VERSION.txt")
+
+
+rule print_protocol_version:
+    output:
+        "PROTOCOL-VERSION.txt"
+    shell:
+        "hundo --version > {output}"
+
+
+rule download_reference_data:
+    output:
+        "%s/{filename}" % config.get("database_dir", ".")
+    run:
+        shell("curl 'https://zenodo.org/record/808727/files/{wildcards.filename}' -s > {output}")
+        if not REFERENCES[os.path.basename(output[0])] == md5(output[0]):
+            raise OSError(2, "Invalid checksum", output[0])
+
+
+rule create_fasta_from_reference:
+    input:
+        BLASTREF
+    output:
+        REFFASTA
+    params:
+        db = lambda wildcards, input: os.path.join(os.path.dirname(input[0]), "%s.fasta" % os.path.basename(input[0]).partition(".")[0])
+    conda:
+        CONDAENV
+    shell:
+        """blastdbcmd -db {params.db} -outfmt %f -entry all -out {output}"""
+
+
+rule get_raw_fastq_qualities:
+    input:
+        unpack(lambda wc: SAMPLES[wc.sample])
+    output:
+        r1 = "logs/{sample}_R1_eestats.txt",
+        r2 = "logs/{sample}_R2_eestats.txt"
+    conda:
+        CONDAENV
+    threads:
+        1
+    shell:
+        """vsearch --threads {threads} --fastq_eestats {input.r1} --output {output.r1}
+           vsearch --threads {threads} --fastq_eestats {input.r2} --output {output.r2}"""
+
+
+rule trim_and_filter_reads:
+    input:
+        unpack(lambda wc: SAMPLES[wc.sample])
+    output:
+        r1 = temp("tmp/{sample}_R1.fastq"),
+        r2 = temp("tmp/{sample}_R2.fastq"),
+        stats = "logs/{sample}_quality_filtering_stats.txt"
+    benchmark:
+        "logs/benchmarks/quality_filter/{sample}.txt"
+    params:
+        lref = "lref=%s" % config.get("filter_adapters") if config.get("filter_adapters") else "",
+        rref = "rref=%s" % config.get("filter_adapters") if config.get("filter_adapters") else "",
+        fref = "fref=%s" % config.get("filter_contaminants") if config.get("filter_contaminants") else "",
+        mink = "" if not config.get("filter_adapters") and not config.get("filter_contaminants") else "mink=%d" % config.get("reduced_kmer_min", 8),
+        trimq = config.get("minimum_base_quality", 10),
+        hdist = "" if not config.get("filter_adapters") and not config.get("filter_contaminants") else "hdist=%d" % config.get("allowable_kmer_mismatches", 1),
+        k = "" if not config.get("filter_adapters") and not config.get("filter_contaminants") else "k=%d" % config.get("reference_kmer_match_length", 27),
+        qtrim = config.get("qtrim", "rl"),
+        minlength = config.get("minimum_passing_read_length", 100)
+    conda:
+        CONDAENV
+    log:
+        "logs/{sample}_quality_filter.log"
+    threads:
+        config.get("threads", 1)
+    shell:
+        """bbduk2.sh in={input.r1} in2={input.r2} out={output.r1} \
+               out2={output.r2} {params.rref} {params.lref} {params.fref} \
+               {params.mink} qout=33 stats={output.stats} {params.hdist} \
+               {params.k} trimq={params.trimq} qtrim={params.qtrim}
+               threads={threads} minlength={params.minlength} \
+               overwrite=true 2> {log}"""
+
+
+rule count_raw_reads:
+    input:
+        "logs/{sample}_quality_filtering_stats.txt"
+    output:
+        "logs/raw_counts/{sample}_R1.count"
+    run:
+        with open(input[0]) as filein, open(output[0], "w") as fileout:
+            for line in filein:
+                if line.startswith("#Total"):
+                    total = int(line.strip().split("\t")[1]) / 2.
+                    print(total, file=fileout)
+                    break
+
+
+rule count_filtered_reads:
+    input:
+        "tmp/{sample}_R1.fastq"
+    output:
+        "logs/filtered_counts/{sample}_R1.count"
+    shell:
+        "awk '{{n++}}END{{print int(n/4)}}' {input} > {output}"
+
+
+rule merge_reads:
+    input:
+        r1 = "tmp/{sample}_R1.fastq",
+        r2 = "tmp/{sample}_R2.fastq"
+    output:
+        temp("tmp/{sample}_merged.fastq")
+    params:
+        minimum_merge_length = config.get("minimum_merge_length", 150)
+    conda:
+        CONDAENV
+    log:
+        "logs/{sample}_merge_reads.log"
+    shell:
+        """vsearch --fastq_mergepairs {input.r1} --reverse {input.r2} \
+               --label_suffix \;sample={wildcards.sample}\; \
+               --fastq_minmergelen {params.minimum_merge_length} \
+               --fastqout {output} --log {log}"""
+
+
+rule count_merged_reads:
+    input:
+        "tmp/{sample}_merged.fastq"
+    output:
+        "logs/merged_counts/{sample}_R1.count"
+    shell:
+        "awk '{{n++}}END{{print int(n/4)}}' {input} > {output}"
+
+
+rule get_prefilter_fastq_stats:
+    input:
+        "tmp/{sample}_merged.fastq"
+    output:
+        "logs/{sample}_merged_eestats.txt"
+    conda:
+        CONDAENV
+    threads:
+        1
+    shell:
+        """vsearch --threads {threads} --fastq_eestats {input} \
+               --output {output}"""
+
+
+rule filter_merged_reads:
+    input:
+        "tmp/{sample}_merged.fastq"
+    output:
+        fa = temp("tmp/{sample}_merged_filtered.fasta"),
+        fq = temp("tmp/{sample}_merged_filtered.fastq")
+    params:
+        maxee = config.get("maximum_expected_error", 1),
+        maxns = config.get("vsearch_maxns", 0)
+    conda:
+        CONDAENV
+    log:
+        "logs/{sample}_fastq_filter.log"
+    shell:
+        """vsearch --fastq_filter {input} --fastq_maxee {params.maxee} \
+               --fastq_maxns {params.maxns} --fastaout {output.fa} \
+               --fastqout {output.fq}"""
+
+
+rule get_postfilter_fastq_stats:
+    input:
+        "tmp/{sample}_merged_filtered.fastq"
+    output:
+        "logs/{sample}_merged_filtered_eestats.txt"
+    conda:
+        CONDAENV
+    threads:
+        1
+    shell:
+        """vsearch --threads {threads} --fastq_eestats {input} \
+               --output {output}"""
+
+
+rule dereplicate_sequences_by_sample:
+    input:
+        "tmp/{sample}_merged_filtered.fasta"
+    output:
+        temp("tmp/{sample}_dereplicated.fasta")
+    conda:
+        CONDAENV
+    log:
+        "logs/{sample}_dereplication.log"
+    shell:
+        """vsearch --derep_fulllength {input} --output {output} \
+               --strand plus --sizeout --relabel {wildcards.sample}."""
+
+
+rule combine_merged_reads:
+    input:
+        expand("tmp/{sample}_dereplicated.fasta", sample=SAMPLES)
+    output:
+        "all-sequences.fasta"
+    shell:
+        "cat {input} > {output}"
+
+
+rule dereplicate_sequences:
+    input:
+        "all-sequences.fasta"
+    output:
+        fa = temp("dereplicated-sequences.fasta"),
+        uc = temp("dereplicated.uclust")
+    params:
+        minuniquesize = config.get("vsearch_minuniquesize", 2)
+    conda:
+        CONDAENV
+    log:
+        "logs/dereplicated-sequences.log"
+    threads:
+        config.get("threads", 1)
+    shell:
+        """vsearch --derep_fulllength {input} --output {output.fa} \
+               --sizein --sizeout --minuniquesize {params.minuniquesize} \
+               --threads {threads} -log {log} --uc {output.uc}"""
+
+
+rule precluster_sequences:
+    input:
+        "dereplicated-sequences.fasta"
+    output:
+        fa = temp("preclustered.fasta"),
+        uc = temp("preclustered.uclust")
+    params:
+        id = min((100 - float(config.get("percent_of_allowable_difference", 3))) / 100, 1.00)
+    conda:
+        CONDAENV
+    log:
+        "logs/precluster.log"
+    threads:
+        config.get("threads", 1)
+    shell:
+        """vsearch --threads {threads} --cluster_size {input} \
+               --id {params.id} --strand plus --sizein --sizeout \
+               --centroids {output.fa} --uc {output.uc}"""
+
+
+rule run_denovo_chimera_filter:
+    input:
+        "preclustered.fasta"
+    output:
+        temp("chimera-filtered_denovo.fasta")
+    conda:
+        CONDAENV
+    log:
+        "logs/chimera-filtered_denovo.log"
+    shell:
+        """vsearch --uchime_denovo {input} --nonchimeras {output} \
+               --strand plus --sizein --sizeout --log {log}"""
+
+
+rule run_reference_chimera_filter:
+    input:
+        unpack(get_run_reference_chimera_filter_inputs)
+    output:
+        temp("chimera-filtered_reference.fasta")
+    conda:
+        CONDAENV
+    log:
+        "logs/chimera-filtered_reference.log"
+    shell:
+        """vsearch --uchime_ref {input.fasta} --nonchimeras {output} \
+               --strand plus --sizein --sizeout --db {input.db} \
+               --log {log}"""
+
+
+rule extract_filtered_sequences:
+    # Extract all non-chimeric, non-singleton sequences, dereplicated
+    input:
+        filter_fa = "dereplicated-sequences.fasta",
+        uc = "preclustered.uclust",
+        keep_fa = "chimera-filtered_reference.fasta"
+    output:
+        temp("nonchimeric-nonsingleton.fasta")
+    run:
+        filter_fastas(input.filter_fa, input.uc, input.keep_fa, output[0])
+
+
+rule pull_seqs_from_samples_with_filtered_sequences:
+    # Extract all non-chimeric, non-singleton sequences in each sample
+    input:
+        filter_fa = "all-sequences.fasta",
+        uc = "dereplicated.uclust",
+        keep_fa = "nonchimeric-nonsingleton.fasta"
+    output:
+        temp("all-sequences_filtered.fasta")
+    run:
+        filter_fastas(input.filter_fa, input.uc, input.keep_fa, output[0])
+
+
+rule cluster_sequences:
+    input:
+        # get_cluster_sequences_input
+        "all-sequences_filtered.fasta"
+    output:
+        fa = "OTU.fasta"
+    params:
+        minsize = config.get("minimum_sequence_abundance", 2),
+        otu_id_pct = (100 - float(config.get("percent_of_allowable_difference", 3))) / 100.
+    conda:
+        CONDAENV
+    log:
+        "logs/cluster_sequences.log"
+    shell:
+        """vsearch --cluster_size {input} --centroids {output.fa} \
+               --relabel OTU_ --id {params.otu_id_pct} --log {log} \
+               --sizein --strand plus"""
+
+
+rule run_blast:
+    input:
+        fasta = "OTU.fasta",
+        # force download
+        db = BLASTREF,
+        db_fa = REFFASTA
+    output:
+        "blast-hits.txt"
+    params:
+        # works due to file naming convention
+        db = REFFASTA,
+        num_alignments = config.get("blast_num_alignments", 25)
+    conda:
+        CONDAENV
+    threads:
+        config.get("threads", 1)
+    shell:
+        """blastn -query {input.fasta} -db {params.db} \
+               -num_alignments {params.num_alignments} \
+               -outfmt 6 -out {output} -num_threads {threads}"""
+
+
+rule compute_lca:
+    input:
+        fasta = "OTU.fasta",
+        hits = "blast-hits.txt",
+        map = REFMAP,
+        tre = REFTRE
+    output:
+        fasta = "OTU_tax.fasta",
+        tsv = temp("OTU_assignments.tsv")
+    params:
+        min_score = config.get("blast_minimum_bitscore", 100),
+        top_fraction = config.get("blast_top_fraction", 0.95)
+    shell:
+        """hundo lca --min-score {params.min_score} \
+               --top-fraction {params.top_fraction} \
+               {input.fasta} {input.hits} {input.map} \
+               {input.tre} {output.fasta} {output.tsv}"""
+
+
+rule compile_counts:
+    input:
+        seqs = "all-sequences.fasta",
+        db = "OTU_tax.fasta"
+    output:
+        tsv = "OTU.txt"
+    params:
+        id_req = config.get("read_identity_requirement", 0.80),
+        minqt = config.get("vsearch_minqt", 0.80)
+    conda:
+        CONDAENV
+    threads:
+        config.get("threads", 1)
+    shell:
+        """vsearch --usearch_global {input.seqs} \
+               --db {input.db} --id {params.id_req} \
+               --otutabout {output.tsv} --sizein --strand plus \
+               --threads {threads}"""
+
+
+rule create_biom_from_txt:
+    input:
+        "OTU.txt"
+    output:
+        "OTU.biom"
+    shadow:
+        "shallow"
+    conda:
+        CONDAENV
+    shell:
+        '''sed 's|\"||g' {input} | sed 's|\,|\;|g' > OTU_converted.txt
+           biom convert -i OTU_converted.txt -o {output} --to-json \
+               --process-obs-metadata sc_separated --table-type "OTU table"'''
+
+
+rule multiple_align:
+    input:
+        "OTU.fasta"
+    output:
+        "OTU_aligned.fasta"
+    threads:
+        config.get("threads", 1)
+    conda:
+        CONDAENV
+    shell:
+        "clustalo -i {input} -o {output} --outfmt=fasta --threads {threads} --force"
+
+
+rule newick_tree:
+    input:
+        "OTU_aligned.fasta"
+    output:
+        "OTU.tree"
+    conda:
+        CONDAENV
+    log:
+        "logs/fasttree.log"
+    shell:
+        "FastTree -nt -gamma -spr 4 -log {log} -quiet {input} > {output}"
+
+
+rule report:
+    input:
+        file1 = "OTU.biom",
+        file2 = "OTU.fasta",
+        file3 = "OTU.tree",
+        file4 = "OTU.txt",
+        fastq_stats_pre = expand("logs/{sample}_merged_eestats.txt", sample=SAMPLES.keys()),
+        fastq_stats_post = expand("logs/{sample}_merged_filtered_eestats.txt", sample=SAMPLES.keys()),
+        raw_r1_quals = expand("logs/{sample}_R1_eestats.txt", sample=SAMPLES.keys()),
+        raw_r2_quals = expand("logs/{sample}_R2_eestats.txt", sample=SAMPLES.keys()),
+        raw_counts = expand("logs/raw_counts/{sample}_R1.count", sample=SAMPLES.keys()),
+        filtered_counts = expand("logs/filtered_counts/{sample}_R1.count", sample=SAMPLES.keys()),
+        merged_counts = expand("logs/merged_counts/{sample}_R1.count", sample=SAMPLES.keys())
+    shadow:
+        "shallow"
+    params:
+        filter_adapters = "None" if not config.get("filter_adapters") else config.get("filter_adapters"),
+        filter_contaminants = "None" if not config.get("filter_contaminants") else config.get("filter_contaminants"),
+        allowable_kmer_mismatches = config.get("allowable_kmer_mismatches"),
+        reference_kmer_match_length = config.get("reference_kmer_match_length"),
+        reduced_kmer_min = config.get("reduced_kmer_min"),
+        minimum_passing_read_length = config.get("minimum_passing_read_length"),
+        minimum_base_quality = config.get("minimum_base_quality"),
+        minimum_merge_length = config.get("minimum_merge_length"),
+        maximum_expected_error = config.get("maximum_expected_error"),
+        reference_chimera_filter = config.get("reference_chimera_filter"),
+        minimum_sequence_abundance = config.get("minimum_sequence_abundance"),
+        percent_of_allowable_difference = config.get("percent_of_allowable_difference"),
+        reference_database = config.get("reference_database"),
+        blast_minimum_bitscore = config.get("blast_minimum_bitscore"),
+        blast_top_fraction = config.get("blast_top_fraction"),
+        read_identity_requirement = config.get("read_identity_requirement")
+    output:
+        html = "summary.html"
+    run:
+        import csv
+        from biom import parse_table
+        from biom.util import compute_counts_per_sample_stats
+        from collections import Counter, defaultdict
+        from operator import itemgetter
+
+        # stats from the biom table
+        summary_csv = "stats.csv"
+        samples_csv = "samples.csv"
+        biom_per_sample_counts = {}
+        biom_libraries = ""
+        biom_observations = ""
+
+        with open(input.file1) as fh, \
+            open(summary_csv, 'w') as sumout, \
+            open(samples_csv, 'w') as samout:
+
+            bt = parse_table(fh)
+            biom_libraries = "[%s]" % ", ".join(map(str, bt.sum("sample")))
+            biom_observations = "[%s]" % ", ".join(map(str, bt.sum("observation")))
+            stats = compute_counts_per_sample_stats(bt)
+            biom_per_sample_counts = stats[4]
+            sample_counts = list(stats[4].values())
+
+            # summary
+            print("Samples", "OTUs", "OTU Total Count", "OTU Table Density",
+                  sep=",", file=sumout)
+            print(len(bt.ids()), len(bt.ids(axis='observation')),
+                  sum(sample_counts), bt.get_table_density(), sep=",",
+                  file=sumout)
+
+            for k, v in sorted(stats[4].items(), key=itemgetter(1)):
+                print(k, '%1.1f' % v, sep=",", file=samout)
+
+        # stats from count files
+        sample_counts = {}
+
+        for sample in SAMPLES:
+            sample_counts[sample] = {}
+            metrics = ["raw_counts", "filtered_counts", "merged_counts"]
+            filepaths = ["logs/raw_counts/{sample}_R1.count".format(sample=sample),
+                         "logs/filtered_counts/{sample}_R1.count".format(sample=sample),
+                         "logs/merged_counts/{sample}_R1.count".format(sample=sample)]
+
+            for metric, filepath in zip(metrics, filepaths):
+                with open(filepath) as fh:
+                    for line in fh:
+                        sample_counts[sample][metric] = int(float(line.strip()))
+                        break
+
+        raw_counts = []
+        filtered_counts = []
+        merged_counts = []
+        biom_counts = []
+        ordered_sample_list = []
+        # sort this by the raw counts total and get the strings for the report
+        for s in sorted(sample_counts.items(), key=lambda k_v: k_v[1]['raw_counts']):
+            ordered_sample_list.append(s[0])
+            raw_counts.append(s[1]['raw_counts'])
+            filtered_counts.append(s[1]['filtered_counts'])
+            merged_counts.append(s[1]['merged_counts'])
+            try:
+                # read count contribution to OTUs
+                biom_counts.append(biom_per_sample_counts[s[0]])
+            except KeyError:
+                biom_counts.append(0)
+
+        # quoted strings within brackets
+        samples_str = "['%s']" % "', '".join(map(str, ordered_sample_list))
+        # non-quoted ints or floats within brackets
+        raw_counts_str = "[%s]" % ", ".join(map(str, raw_counts))
+        filtered_counts_str = "[%s]" % ", ".join(map(str, filtered_counts))
+        merged_counts_str = "[%s]" % ", ".join(map(str, merged_counts))
+        biom_counts_str = "[%s]" % ", ".join(map(str, biom_counts))
+
+        # counts by taxonomic level
+        def levels_from_string(taxonomy):
+            level_dict = {}
+            for level in "kpcofgs":
+                level_dict[level] = taxonomy.partition("%s__" % level)[-1].partition(",")[0]
+            return level_dict
+
+        with open(input.file4) as fh:
+            reader = csv.DictReader(fh, delimiter="\t")
+            samples_counter = defaultdict(lambda: defaultdict(Counter))
+            tax_level_quantities = defaultdict(Counter)
+            for row in reader:
+                for k, v in row.items():
+                    if "OTU ID" in k or k == "taxonomy": continue
+                    row_tax_levels = levels_from_string(row["taxonomy"])
+                    for lvl in ["p", "c", "o"]:
+                        # sum the row in order to find top taxa
+                        tax_level_quantities[lvl][row_tax_levels[lvl]] += int(v)
+                        samples_counter[k][lvl][row_tax_levels[lvl]] += int(row[k])
+
+        tax_strings = dict()
+        for level, level_counts in tax_level_quantities.items():
+            tax_strings[level] = ""
+            for assigned_level, count in level_counts.most_common():
+                series_data = []
+                tax_strings[level] += "name: '%s', " % assigned_level if not assigned_level == "?" else "name: 'Unassigned', "
+                for sample in ordered_sample_list:
+                    series_data.append(samples_counter[sample][level][assigned_level])
+                assert len(series_data) == len(ordered_sample_list)
+                tax_strings[level] += "data: [%s] " % ",".join([str(i) for i in series_data])
+                tax_strings[level] += "},{"
+        for lvl in ["p", "c", "o"]:
+            tax_strings[lvl] = tax_strings[lvl].strip("},{")
+        phylum_str = tax_strings["p"]
+        class_str = tax_strings["c"]
+        order_str = tax_strings["o"]
+
+        # fastq ee stats
+
+        # raw reads with R1 and R2 separate
+                # raw_r1_quals = expand("logs/{sample}_R1_eestats.txt", sample=SAMPLES.keys()),
+                # raw_r2_quals = expand("logs/{sample}_R2_eestats.txt", sample=SAMPLES.keys()),
+
+        raw_qual_stats = defaultdict(lambda: defaultdict(list))
+        for r1_stats in input.raw_r1_quals:
+            sample_name = r1_stats.partition("logs/")[-1].partition("_R1")[0]
+            with open(r1_stats) as fh:
+                reader = csv.DictReader(fh, delimiter="\t")
+                for row in reader:
+                    raw_qual_stats["R1"][sample_name].append(row["Mean_Q"])
+        for r2_stats in input.raw_r2_quals:
+            sample_name = r2_stats.partition("logs/")[-1].partition("_R2")[0]
+            with open(r2_stats) as fh:
+                reader = csv.DictReader(fh, delimiter="\t")
+                for row in reader:
+                    raw_qual_stats["R2"][sample_name].append(row["Mean_Q"])
+        raw_qual_stats_str = ""
+        for idx, sample_data in raw_qual_stats.items():
+            color = "#3366cc" if idx == "R1" else "#dc3912"
+            for sample_name, sample_stats in sample_data.items():
+                raw_qual_stats_str += "name: '%s', " % sample_name
+                raw_qual_stats_str += "data: [%s], " % ",".join(sample_stats)
+                raw_qual_stats_str += "color: '%s' },{" % color
+        raw_qual_stats_str.strip("},{")
+
+        # merged reads
+        ee_stats = defaultdict(lambda: defaultdict(list))
+        for stats_file in input.fastq_stats_pre + input.fastq_stats_post:
+            status = "post" if stats_file.endswith("filtered_eestats.txt") else "pre"
+            sample_name = stats_file.partition("logs/")[-1].partition("_merged")[0]
+            with open(stats_file) as fh:
+                reader = csv.DictReader(fh, delimiter="\t")
+                for row in reader:
+                    ee_stats[status][sample_name].append(row["Max_EE"])
+        ee_qual_str = ""
+        for status, sample_data in ee_stats.items():
+            color = "#3366cc" if status == "pre" else "#dc3912"
+            for sample_name, sample_stats in sample_data.items():
+                ee_qual_str += "name: '%s', " % sample_name
+                ee_qual_str += "data: [%s], " % ",".join(sample_stats)
+                ee_qual_str += "color: '%s' },{" % color
+        ee_qual_str.strip("},{")
+
+        report("""
+        =============================================================
+        hundo_ - Experiment Summary
+        =============================================================
+
+        .. _hundo: https://github.com/pnnl/hundo
+
+        .. raw:: html
+
+            <style type="text/css">
+
+            body {{
+              font-family: Helvetica, arial, sans-serif;
+              font-size: 14px;
+              line-height: 1.6;
+              /*padding-top: 10px;*/
+              padding-bottom: 10px;
+              background-color: white;
+              /*padding: 30px;*/
+              color: #333;
+              margin: 0px;
+            }}
+
+            /*body > *:first-child {{
+              margin-top: 0 !important;
+            }}
+
+            body > *:last-child {{
+              margin-bottom: 0 !important;
+            }}*/
+
+            body>div .section::before {{
+              content:"";
+              display:block;
+              height:80px; /* fixed header height*/
+              margin:-80px 0 0; /* negative fixed header height */
+            }}
+
+            #summary::before {{
+              margin: 0;
+            }}
+
+            #contents {{
+              margin-top: 100px;
+            }}
+
+            .topic-title {{
+              font-size: 18pt;
+            }}
+
+            body > div > .section{{
+              margin-left: 22%;
+              margin-bottom: 3em;
+            }}
+
+            div.section {{
+              margin-right: 20px;
+            }}
+
+            #contents > p {{
+              display: none;
+            }}
+
+            #contents {{
+              margin-top: 80px;
+              padding-left: 0px;
+              width: 20%;
+              background-color: #f1f1f1;
+              height: 100%; /* Full height */
+              position: fixed; /* Make it stick, even on scroll */
+              overflow: auto; /* Enable scrolling if the sidenav has too much content */
+            }}
+
+            #contents ul {{
+              list-style-type: none;
+            }}
+
+            #contents ul > li {{
+              font-size: 14pt;
+            }}
+
+            #contents ul > li a:hover {{
+              color: #151d26;
+            }}
+
+            #contents ul > li > ul > li {{
+              font-size: 12pt;
+            }}
+
+            h1.title {{
+              margin-top: 0;
+              position: fixed;
+              z-index: 10;
+              padding: 20px;
+              color: #fff;
+              background-color: #151d26;
+              width: 100%;
+            }}
+
+            .one-col {{
+              min-width: 310px;
+              height: 500px;
+              margin: 0 auto;
+            }}
+
+            .two-col-left {{
+              height: 300px;
+              width: 49%;
+              float: left;
+            }}
+
+            .two-col-right {{
+              height: 300px;
+              width: 49%;
+              float: right;
+            }}
+
+            button {{
+              display: inline-block;
+              margin: 0 5px 0 0;
+              padding: 5px 25px;
+              font-size: 18px;
+              line-height: 1.8;
+              appearance: none;
+              box-shadow: none;
+              border-radius: 3px;
+              color: #fff;
+              background-color: #151d26;
+              border: none;
+            }}
+
+            button:focus {{
+              outline: none
+            }}
+
+            button:hover {{
+              background-color: #4183C4;
+            }}
+
+            button:active {{
+              background-color: #27496d;
+            }}
+
+            .legend-rect {{
+                width: 20px;
+                height: 20px;
+                margin-right: 8px;
+                margin-left: 20px;
+                float: left;
+                -webkit-border-radius: 2px;
+                border-radius: 2px;
+            }}
+
+            a {{
+              color: #4183C4;
+              text-decoration: none;
+            }}
+
+            a.absent {{
+              color: #cc0000;
+            }}
+
+            a.anchor {{
+              /*display: block;*/
+              padding-left: 30px;
+              margin-left: -30px;
+              cursor: pointer;
+              position: absolute;
+              top: 0;
+              left: 0;
+              bottom: 0;
+            }}
+
+            h1, h2, h3, h4, h5, h6 {{
+              margin: 20px 0 10px;
+              padding: 0;
+              font-weight: bold;
+              -webkit-font-smoothing: antialiased;
+              cursor: text;
+              position: relative;
+            }}
+
+            h1:hover a.anchor, h2:hover a.anchor, h3:hover a.anchor, h4:hover a.anchor, h5:hover a.anchor, h6:hover a.anchor {{
+              text-decoration: none;
+            }}
+
+            h1 tt, h1 code {{
+              font-size: inherit;
+            }}
+
+            h2 tt, h2 code {{
+              font-size: inherit;
+            }}
+
+            h3 tt, h3 code {{
+              font-size: inherit;
+            }}
+
+            h4 tt, h4 code {{
+              font-size: inherit;
+            }}
+
+            h5 tt, h5 code {{
+              font-size: inherit;
+            }}
+
+            h6 tt, h6 code {{
+              font-size: inherit;
+            }}
+
+            h1 {{
+              font-size: 28px;
+              color: #151d26;
+              border-bottom: 1px solid #cccccc;
+            }}
+
+            h2 {{
+              font-size: 24px;
+              color: black;
+            }}
+
+            h3 {{
+              font-size: 18px;
+            }}
+
+            h4 {{
+              font-size: 16px;
+            }}
+
+            h5 {{
+              font-size: 14px;
+            }}
+
+            h6 {{
+              color: #777777;
+              font-size: 14px;
+            }}
+
+            p, blockquote, ul, ol, dl, li, table, pre {{
+              margin: 15px 0;
+            }}
+
+            hr {{
+              background: transparent url("http://tinyurl.com/bq5kskr") repeat-x 0 0;
+              border: 0 none;
+              color: #cccccc;
+              height: 4px;
+              padding: 0;
+            }}
+
+            /*body > h2:first-child {{
+              margin-top: 0;
+              padding-top: 0;
+            }}
+
+            body > h1:first-child {{
+              margin-top: 0;
+              padding-top: 0;
+            }}
+
+            body > h1:first-child + h2 {{
+              margin-top: 0;
+              padding-top: 0;
+            }}
+
+            body > h3:first-child, body > h4:first-child, body > h5:first-child, body > h6:first-child {{
+              margin-top: 0;
+              padding-top: 0;
+            }}*/
+
+            a:first-child h1, a:first-child h2, a:first-child h3, a:first-child h4, a:first-child h5, a:first-child h6 {{
+              margin-top: 0;
+              padding-top: 0;
+            }}
+
+            h1 p, h2 p, h3 p, h4 p, h5 p, h6 p {{
+              margin-top: 0;
+            }}
+
+            li p.first {{
+              display: inline-block;
+            }}
+
+            /*ul, ol {{
+              padding-left: 30px;
+            }}*/
+
+            /*ul :first-child, ol :first-child {{
+              margin-top: 0;
+            }}
+
+            ul :last-child, ol :last-child {{
+              margin-bottom: 0;
+            }}*/
+
+            dl {{
+              padding: 0;
+            }}
+
+            dl dt {{
+              font-size: 14px;
+              font-weight: bold;
+              font-style: italic;
+              padding: 0;
+              margin: 15px 0 5px;
+            }}
+
+            dl dt:first-child {{
+              padding: 0;
+            }}
+
+            dl dt > :first-child {{
+              margin-top: 0;
+            }}
+
+            dl dt > :last-child {{
+              margin-bottom: 0;
+            }}
+
+            dl dd {{
+              margin: 0 0 15px;
+              padding: 0 15px;
+            }}
+
+            dl dd > :first-child {{
+              margin-top: 0;
+            }}
+
+            dl dd > :last-child {{
+              margin-bottom: 0;
+            }}
+
+            blockquote {{
+              border-left: 4px solid #dddddd;
+              padding: 0 15px;
+              color: #777777;
+            }}
+
+            blockquote > :first-child {{
+              margin-top: 0;
+            }}
+
+            blockquote > :last-child {{
+              margin-bottom: 0;
+            }}
+
+            table {{
+              padding: 0;
+              border-spacing: 0;
+              border-collapse: collapse;
+            }}
+            table tr {{
+              border-top: 1px solid #cccccc;
+              background-color: white;
+              margin: 0;
+              padding: 0;
+            }}
+
+            table tr:nth-child(2n) {{
+              background-color: #f8f8f8;
+            }}
+
+            table tr th {{
+              font-weight: bold;
+              border: 1px solid #cccccc;
+              text-align: left;
+              margin: 0;
+              padding: 6px 13px;
+            }}
+
+            table tr td {{
+              border: 1px solid #cccccc;
+              text-align: left;
+              margin: 0;
+              padding: 6px 13px;
+            }}
+
+            table tr th :first-child, table tr td :first-child {{
+              margin-top: 0;
+            }}
+
+            table tr th :last-child, table tr td :last-child {{
+              margin-bottom: 0;
+            }}
+
+            img {{
+              max-width: 100%;
+            }}
+
+            span.frame {{
+              display: block;
+              overflow: hidden;
+            }}
+
+            span.frame > span {{
+              border: 1px solid #dddddd;
+              display: block;
+              float: left;
+              overflow: hidden;
+              margin: 13px 0 0;
+              padding: 7px;
+              width: auto;
+            }}
+
+            span.frame span img {{
+              display: block;
+              float: left;
+            }}
+
+            span.frame span span {{
+              clear: both;
+              color: #333333;
+              display: block;
+              padding: 5px 0 0;
+            }}
+
+            span.align-center {{
+              display: block;
+              overflow: hidden;
+              clear: both;
+            }}
+
+            span.align-center > span {{
+              display: block;
+              overflow: hidden;
+              margin: 13px auto 0;
+              text-align: center;
+            }}
+
+            span.align-center span img {{
+              margin: 0 auto;
+              text-align: center;
+            }}
+
+            span.align-right {{
+              display: block;
+              overflow: hidden;
+              clear: both;
+            }}
+
+            span.align-right > span {{
+              display: block;
+              overflow: hidden;
+              margin: 13px 0 0;
+              text-align: right;
+            }}
+
+            span.align-right span img {{
+              margin: 0;
+              text-align: right;
+            }}
+
+            span.float-left {{
+              display: block;
+              margin-right: 13px;
+              overflow: hidden;
+              float: left;
+            }}
+
+            span.float-left span {{
+              margin: 13px 0 0;
+            }}
+
+            span.float-right {{
+              display: block;
+              margin-left: 13px;
+              overflow: hidden;
+              float: right;
+            }}
+
+            span.float-right > span {{
+              display: block;
+              overflow: hidden;
+              margin: 13px auto 0;
+              text-align: right;
+            }}
+
+            code, tt {{
+              margin: 0 2px;
+              padding: 0 5px;
+              white-space: nowrap;
+              border: 1px solid #eaeaea;
+              background-color: #f8f8f8;
+              border-radius: 3px;
+            }}
+
+            pre code {{
+              margin: 0;
+              padding: 0;
+              white-space: pre;
+              border: none;
+              background: transparent;
+            }}
+
+            .highlight pre {{
+              background-color: #f8f8f8;
+              border: 1px solid #cccccc;
+              font-size: 13px;
+              line-height: 19px;
+              overflow: auto;
+              padding: 6px 10px;
+              border-radius: 3px;
+            }}
+
+            pre {{
+              background-color: #f8f8f8;
+              border: 1px solid #cccccc;
+              font-size: 13px;
+              line-height: 19px;
+              overflow: auto;
+              padding: 6px 10px;
+              border-radius: 3px;
+            }}
+
+            pre code, pre tt {{
+              background-color: transparent;
+              border: none;
+            }}
+
+            div#metadata {{
+                text-align: right;
+            }}
+
+            </style>
+
+            <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+            <script src="https://code.highcharts.com/highcharts.js"></script>
+            <script src="https://code.highcharts.com/modules/exporting.js"></script>
+            <script type="text/javascript">
+
+            Highcharts.theme = {{
+                colors: ["#3366cc", "#dc3912", "#ff9900", "#109618", "#990099", "#0099c6", "#dd4477", "#66aa00", "#b82e2e", "#316395", "#994499", "#22aa99", "#aaaa11", "#6633cc", "#e67300", "#8b0707", "#651067", "#329262", "#5574a6", "#3b3eac"],
+                lang:
+                    {{
+                    thousandsSep: ""
+                    }}
+            }};
+            Highcharts.setOptions(Highcharts.theme);
+
+            $(function () {{
+                $('#raw-count-plot').highcharts({{
+                    chart: {{
+                        type: 'column'
+                    }},
+                    title: {{
+                        text: 'Counts Per Sample By Processing Step'
+                    }},
+                    exporting: {{
+                        enabled: false
+                    }},
+                    xAxis: {{
+                        categories: {samples_str},
+                        crosshair: true
+                    }},
+                    yAxis: {{
+                        min: 0,
+                        title: {{
+                            text: 'Count'
+                        }}
+                    }},
+                    tooltip: {{
+                        headerFormat: '<span style="font-size:10px">{{point.key}}</span><table>',
+                        pointFormat: '<tr><td style="color:{{series.color}};padding:0">{{series.name}}: </td>' +
+                            '<td style="padding:0"><b>{{point.y:.1f}}</b></td></tr>',
+                        footerFormat: '</table>',
+                        shared: true,
+                        useHTML: true
+                    }},
+                    credits: {{
+                        enabled: false
+                    }},
+                    plotOptions: {{
+                        column: {{
+                            pointPadding: 0.1,
+                            borderWidth: 0
+                        }}
+                    }},
+                    series: [{{
+                                name: 'Raw',
+                                data: {raw_counts_str}
+                            }},
+                            {{
+                                name: 'Filtered',
+                                data: {filtered_counts_str},
+                                visible: false
+                            }},
+                            {{
+                                name: 'Merged',
+                                data: {merged_counts_str},
+                                visible: false
+                            }},
+                            {{
+                                name: 'Assigned to OTUs',
+                                data: {biom_counts_str},
+                                visible: false
+                            }}]
+                    }});
+            }});
+
+            $(function() {{
+              $('#library-sizes-plot').highcharts({{
+                chart: {{
+                  type: 'column'
+                }},
+                title: {{
+                  text: 'Distribution of Counts Across Libraries'
+                }},
+                legend: {{
+                  enabled: false
+                }},
+                credits: {{
+                  enabled: false
+                }},
+                exporting: {{
+                  enabled: false
+                }},
+                tooltip: {{}},
+                plotOptions: {{
+                  column: {{
+                      pointPadding: 0.1,
+                      borderWidth: 0
+                  }}
+                }},
+                xAxis: {{
+                  title: {{
+                    text: 'Number of Reads (Counts)'
+                  }}
+                }},
+                yAxis: {{
+                  title: {{
+                    text: 'Number of Libraries'
+                  }}
+                }},
+                series: [{{
+                            name: 'Library',
+                            data: binData({biom_libraries})
+                        }}]
+                }});
+            }});
+
+            $(function() {{
+              $('#otu-totals-plot').highcharts({{
+                chart: {{
+                  type: 'column'
+                }},
+                title: {{
+                  text: 'Distribution of Counts Across OTUs'
+                }},
+                legend: {{
+                  enabled: false
+                }},
+                credits: {{
+                  enabled: false
+                }},
+                exporting: {{
+                  enabled: false
+                }},
+                tooltip: {{}},
+                plotOptions: {{
+                  column: {{
+                      pointPadding: 0.1,
+                      borderWidth: 0
+                  }}
+                }},
+                xAxis: {{
+                  title: {{
+                    text: 'Number of Reads (Counts)'
+                  }}
+                }},
+                yAxis: {{
+                  type: 'logarithmic',
+                  minorTickInterval: 0.1,
+                  title: {{
+                    text: 'log(Number of OTUs)'
+                  }}
+                }},
+                series: [{{
+                            name: 'Observations',
+                            data: binData({biom_observations})
+                        }}]
+                }});
+            }});
+
+            $(function() {{
+              var chart = Highcharts.chart('taxonomy-plot', {{
+                    chart: {{
+                      type: 'column'
+                    }},
+                    title: {{
+                      text: 'Assigned Taxonomy per Sample'
+                    }},
+                    subtitle: {{
+                        text: 'Level: Phylum'
+                    }},
+                    legend: {{
+                      enabled: false
+                    }},
+                    credits: {{
+                      enabled: false
+                    }},
+                    exporting: {{
+                      enabled: false
+                    }},
+                    tooltip: {{}},
+                    plotOptions: {{
+                      column: {{
+                          pointPadding: 0.0,
+                          groupPadding: 0.05,
+                          borderWidth: 0
+                      }},
+                      series: {{
+                          stacking: 'normal'
+                      }}
+                    }},
+                    xAxis: {{
+                      tickInterval: 1,
+                      categories: {samples_str},
+                    }},
+                    yAxis: {{
+                      min: 0,
+                    //   minorTickInterval: 0.1,
+                      title: {{
+                        text: 'Raw counts'
+                      }}
+                    }},
+                    series: [{{
+                        {phylum_str}
+                    }}]
+                }});
+
+                $('#phylum-btn').click(function () {{
+                    chart.update({{
+                        subtitle: {{
+                            text: 'Level: Phylum'
+                        }},
+                        series: [{{
+                            {phylum_str}
+                        }}]
+                    }});
+                }});
+
+                $('#class-btn').click(function () {{
+                    chart.update({{
+                        subtitle: {{
+                            text: 'Level: Class'
+                        }},
+                        series: [{{
+                            {class_str}
+                        }}]
+                    }});
+                }});
+
+                $('#order-btn').click(function () {{
+                    chart.update({{
+                        subtitle: {{
+                            text: 'Level: Order'
+                        }},
+                        series: [{{
+                            {order_str}
+                        }}]
+                    }});
+                }});
+            }});
+
+            function binData(data) {{
+
+              var hData = new Array(), //the output array
+                size = data.length, //how many data points
+                bins = Math.round(Math.sqrt(size)); //determine how many bins we need
+              bins = bins > 50 ? 50 : bins; //adjust if more than 50 cells
+              var max = Math.max.apply(null, data), //lowest data value
+                min = Math.min.apply(null, data), //highest data value
+                range = max - min, //total range of the data
+                width = range / bins, //size of the bins
+                bin_bottom, //place holders for the bounds of each bin
+                bin_top;
+
+              //loop through the number of cells
+              for (var i = 0; i < bins; i++) {{
+
+                //set the upper and lower limits of the current cell
+                bin_bottom = min + (i * width);
+                bin_top = bin_bottom + width;
+
+                //check for and set the x value of the bin
+                if (!hData[i]) {{
+                  hData[i] = new Array();
+                  hData[i][0] = bin_bottom + (width / 2);
+                }}
+
+                //loop through the data to see if it fits in this bin
+                for (var j = 0; j < size; j++) {{
+                  var x = data[j];
+
+                  //adjust if it's the first pass
+                  i == 0 && j == 0 ? bin_bottom -= 1 : bin_bottom = bin_bottom;
+
+                  //if it fits in the bin, add it
+                  if (x > bin_bottom && x <= bin_top) {{
+                    !hData[i][1] ? hData[i][1] = 1 : hData[i][1]++;
+                  }}
+                }}
+              }}
+              $.each(hData, function(i, point) {{
+                if (typeof point[1] == 'undefined') {{
+                  hData[i][1] = 0;
+                }}
+              }});
+              return hData;
+            }}
+
+            $(function() {{
+              $('#methods-qual-plot').highcharts({{
+                chart: {{
+                  type: 'line'
+                }},
+                title: {{
+                  text: 'Mean Quality Scores for R1 and R2'
+                }},
+                legend: {{
+                  enabled: false
+                }},
+                credits: {{
+                  enabled: false
+                }},
+                exporting: {{
+                  enabled: false
+                }},
+                tooltip: {{
+                    headerFormat: '',
+                    pointFormat: '<div style="color:{{series.color}};padding:0">{{series.name}}</div>',
+                    footerFormat: '<div style="font-size:10px"><b>Quality: {{point.y:.1f}}</b></div><div style="font-size:10px">Position: {{point.key}}</div>',
+                    useHTML: true
+                }},
+                plotOptions: {{
+                  column: {{
+                      pointPadding: 0.1,
+                      borderWidth: 0
+                  }},
+                  series: {{
+                      label: {{
+                        enabled: false
+                      }},
+                      line: {{
+                        marker: {{
+                            enabled: false
+                        }}
+                      }}
+                  }}
+                }},
+                xAxis: {{
+                  title: {{
+                    text: 'Position'
+                  }}
+                }},
+                yAxis: {{
+                  title: {{
+                    text: 'Quality (Phred score)'
+                  }}
+                }},
+                series: [{{
+                            {raw_qual_stats_str}
+                        }}]
+              }});
+            }});
+
+            $(function() {{
+              $('#methods-ee-plot').highcharts({{
+                chart: {{
+                  type: 'line'
+                }},
+                title: {{
+                  text: 'Maximum Expected Error Rates Before and After EE Filter'
+                }},
+                legend: {{
+                  enabled: false
+                }},
+                credits: {{
+                  enabled: false
+                }},
+                exporting: {{
+                  enabled: false
+                }},
+                tooltip: {{
+                    headerFormat: '',
+                    pointFormat: '<div style="color:{{series.color}};padding:0">{{series.name}}</div>',
+                    footerFormat: '<div style="font-size:10px"><b>EE: {{point.y:.1f}}</b></div><div style="font-size:10px">Position: {{point.key}}</div>',
+                    useHTML: true
+                }},
+                plotOptions: {{
+                  column: {{
+                      pointPadding: 0.1,
+                      borderWidth: 0
+                  }},
+                  series: {{
+                      label: {{
+                        enabled: false
+                      }},
+                      line: {{
+                        marker: {{
+                            enabled: false
+                        }}
+                      }}
+                  }}
+                }},
+                xAxis: {{
+                  title: {{
+                    text: 'Position'
+                  }}
+                }},
+                yAxis: {{
+                  title: {{
+                    text: 'Expected Error'
+                  }}
+                }},
+                series: [{{
+                            {ee_qual_str}
+                        }}]
+              }});
+            }});
+
+            </script>
+
+
+        .. contents::
+            :backlinks: none
+
+        Summary
+        -------
+
+        .. csv-table::
+            :file: {summary_csv}
+            :header-rows: 1
+
+        Sequence Quality
+        ****************
+
+        .. raw:: html
+
+            <div id="methods-qual-plot" class="one-col"></div>
+            <div style="display: block; max-width: 800px; min-width: 300px; margin-bottom: 30px;">
+                <div class="legend-rect" style="background-color: #3366cc;"></div>
+                <div style="float: left;">Forward Read (R1)</div>
+                <div class="legend-rect" style="background-color: #dc3912;"></div>
+                <div>Reverse Read (R2)</div>
+            </div>
+
+        Sequence Counts
+        ***************
+
+        .. raw:: html
+
+            <div id="raw-count-plot" class="one-col"></div>
+
+        Taxonomy
+        ********
+
+        .. raw:: html
+
+            <div id="taxonomy-plot" class="one-col"></div>
+            <div>
+                <button id="phylum-btn">Phylum</button>
+                <button id="class-btn">Class</button>
+                <button id="order-btn">Order</button>
+            </div>
+
+        Count Distribution
+        ******************
+
+        .. raw:: html
+
+            <div id="library-sizes-plot" class="two-col-left"></div>
+            <div id="otu-totals-plot" class="two-col-right"></div>
+
+
+        Methods
+        -------
+
+        ``hundo`` wraps a number of functions and its exact steps are
+        dependent upon a given user's configuration.
+
+        Paired-end sequence reads are quality trimmed and can be trimmed of
+        adapters and filtered of contaminant sequences using BBDuk2 of the
+        BBTools_ package. Passing reads are merged using
+        VSEARCH_ then aggregated into a single FASTA file with headers
+        describing the origin and count of the sequence.
+
+        Prior to creating clusters, reads are filtered again based on expected
+        error rates:
+
+        .. raw:: html
+
+            <div id="methods-ee-plot" class="one-col"></div>
+            <div style="display: block; max-width: 800px; min-width: 300px; margin-bottom: 30px;">
+                <div class="legend-rect" style="background-color: #3366cc;"></div>
+                <div style="float: left;">Before EE Filter</div>
+                <div class="legend-rect" style="background-color: #dc3912;"></div>
+                <div>After EE Filter</div>
+            </div>
+
+        To create clusters, the aggregated, merged reads are dereplicated to
+        remove singletons by default using VSEARCH. Sequences are preclustered
+        into centroids using VSEARCH to accelerate chimera filtering. Chimera
+        filtering is completed in two steps: *de novo* and then reference
+        based. The reference by default is the entire annotation database.
+        Following chimera filtering, sequences are placed into clusters using
+        distance-based, greedy cluster with VSEARCH based on the allowable
+        percent difference of the configuration.
+
+        After OTU sequences have been determined, BLAST_ is used to align
+        sequences to the reference database. Reference databases were curated
+        by the CREST_ team and hundo incorporates the CREST LCA method.
+
+        Counts are assigned to OTUs using the global alignment method of
+        VSEARCH, which outputs the final OTU table as a tab-delimited text
+        file. The Biom_ command line tool is used to convert the tab table
+        to biom.
+
+        Multiple alignment of sequences is completed using `Clustal Omega`_.
+        A tree based on the aligned sequences is built using FastTree2_.
+
+        This workflow is built using Snakemake_ and makes use of Bioconda_
+        to install its dependencies.
+
+        .. _BBTools: https://sourceforge.net/projects/bbmap/
+        .. _VSEARCH: https://github.com/torognes/vsearch
+        .. _BLAST: https://blast.ncbi.nlm.nih.gov/Blast.cgi
+        .. _CREST: https://github.com/lanzen/CREST
+        .. _Biom: http://biom-format.org/
+        .. _Clustal Omega: http://www.clustal.org/omega/
+        .. _FastTree2: http://www.microbesonline.org/fasttree/
+        .. _Snakemake: https://snakemake.readthedocs.io/en/stable/
+        .. _Bioconda: https://bioconda.github.io/
+
+        Configuration
+        -------------
+
+        ::
+
+            filter_adapters: {params.filter_adapters}
+            filter_contaminants: {params.filter_contaminants}
+            allowable_kmer_mismatches: {params.allowable_kmer_mismatches}
+            reference_kmer_match_length: {params.reference_kmer_match_length}
+            allowable_kmer_mismatches: {params.allowable_kmer_mismatches}
+            reference_kmer_match_length: {params.reference_kmer_match_length}
+            reduced_kmer_min: {params.reduced_kmer_min}
+            minimum_passing_read_length: {params.minimum_passing_read_length}
+            minimum_base_quality: {params.minimum_base_quality}
+            minimum_merge_length: {params.minimum_merge_length}
+            maximum_expected_error: {params.maximum_expected_error}
+            reference_chimera_filter: {params.reference_chimera_filter}
+            minimum_sequence_abundance: {params.minimum_sequence_abundance}
+            percent_of_allowable_difference: {params.percent_of_allowable_difference}
+            reference_database: {params.reference_database}
+            blast_minimum_bitscore: {params.blast_minimum_bitscore}
+            blast_top_fraction: {params.blast_top_fraction}
+            read_identity_requirement: {params.read_identity_requirement}
+
+        Output Files
+        ------------
+
+        Not all files written by the workflow are contained within the
+        Downloads section of this page to minimize the size of the this
+        document. Other output files are described and are written to the
+        results directory.
+
+        Attached
+        ********
+
+        **OTU.biom**
+
+        Biom table with raw counts per sample and their associated
+        taxonomic assignment formatted to be compatible with downstream tools
+        like phyloseq_.
+
+        .. _phyloseq: https://joey711.github.io/phyloseq/
+
+        **OTU.fasta**
+
+        Representative DNA sequences of each OTU.
+
+        **OTU.tree**
+
+        Newick tree representation of aligned OTU sequences.
+
+        **OTU.txt**
+
+        Tab-delimited text table with columns OTU ID, a column for each sample,
+        and taxonomy assignment in the final column as a comma delimited list.
+
+        Others
+        ******
+
+        **OTU_aligned.fasta**
+
+        OTU sequences after alignment using Clustal Omega.
+
+        **all-sequences.fasta**
+
+        Quality-controlled, dereplicated DNA sequences of all samples. The
+        header of each record identifies the sample of origin and the count
+        resulting from dereplication.
+
+        **blast-hits.txt**
+
+        The BLAST assignments per OTU sequence.
+
+        Downloads
+        ---------
+
+        """, output.html, metadata="Author: " + config.get("author", "hundo"),
+        stylesheet="", file1=input.file1, file2=input.file2, file3=input.file3,
+        file4=input.file4)
+
+
+onsuccess:
+    shutil.rmtree("tmp", ignore_errors=True)
+    print("Protocol [%s] completed successfully." % PROTOCOL_VERSION)

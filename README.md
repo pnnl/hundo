@@ -1,179 +1,114 @@
 ![logo](resources/logo.png)
 
 [![DOI](https://zenodo.org/badge/83449413.svg)](https://zenodo.org/badge/latestdoi/83449413)
+[![Documentation Status](https://readthedocs.org/projects/hundo/badge/?version=latest)](http://hundo.readthedocs.io/en/latest/?badge=latest)
 [![bioconda-badge](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat-square)](http://bioconda.github.io)
 
++ Performs quality control based on quality, can trim adapters, and remove sequences matching a contaminant database
++ Handles paired-end read merging
++ Integrates *de novo* and reference-based chimera filtering
++ Clusters sequences and annotates using databases that are downloaded as needed
++ Generates standard outputs for these data like a newick tree, a tabular OTU table with taxonomy, and .biom.
+
+This workflow is built using [Snakemake](https://snakemake.readthedocs.io/en/stable/) and makes use of [Bioconda](https://bioconda.github.io/) to install
+its dependencies.
+
+# Documentation
+
+For complete documentation and install instructions, see:
+
+https://hundo.readthedocs.io
 
 # Install
 
-The simplest way to do this is to grab the Python 3 version of [Anaconda](https://www.continuum.io/downloads), then add the prerequisite channels:
+This protocol leverages the work of Bioconda and depends on `conda`. For complete setup of these, please see:
+
+https://bioconda.github.io/#using-bioconda
+
+Really, you just need to make sure `conda` is executable and you've set up your channels (numbers 1 and 2). Then:
 
 ```
-conda config --add channels conda-forge
-conda config --add channels defaults
-conda config --add channels r
-conda config --add channels bioconda
-```
-
-And install dependencies
-
-```
-conda install python=3.5 snakemake biom-format fasttree bbmap blast clustalo
-```
-
-Unfortunately, [USEARCH](http://www.drive5.com/usearch/download.html) is currently a dependency of this protocol and it is not easily distributed.
-
-Due to the size of this repo, as reference data is included, I'm hesitant to place this within Bioconda for now.
-
-Finally, clone this code:
-
-```
-git clone https://github.com/pnnl/hundo.git
+conda install python=3.5 pyyaml snakemake biopython biom-format=2.1.5
+pip install hundo
 ```
 
 # Usage
 
-## Experimental Data
+Running samples through annotation requires that input FASTQs be paired-end,
+named in a semi-conventional style starting sample ID, contain "\_R1" (or "\_r1")
+and "\_R2" (or "\_r2") index identifiers, and have an extension ".fastq" or
+".fq". The files may be gzipped and end with ".gz". By default, both R1 and R2
+need to be larger than 10K in size. This cutoff is arbitrary and can be
+set using `--prefilter-file-size`.
 
-Place demultiplexed, uncompressed reads into `results/<EXPERIMENT NAME>/demux`
-with a `.fastq` file extension.
-
-For `test-experiment` will look like:
-
-```
-cd hundo
-tree results
-└── test-experiment
-    └── demux
-        ├── sample-1_R1.fastq
-        ├── sample-1_R2.fastq
-        ├── sample-2_R1.fastq
-        └── sample-2_R2.fastq
-```
-
-It's important that sample names end with some form of underscore then read identifier, e.g. _R1.fastq or _r1.fastq.
-
-Sample names should not include underscores.
-
-## Preparing Databases
-
-Uncompress the BLAST database and taxonomy file:
+Using the example data of the mothur SOP located in our tests directory, we
+can annotate across SILVA using:
 
 ```
-cd ref/silva_123
-sh extract.sh
-gunzip SLV_123_SSU.tax.gz
+cd example
+hundo annotate \
+    --filter-adapters qc_references/adapters.fa.gz \
+    --filter-contaminants qc_references/phix174.fa.gz \
+    --out-dir mothur_sop_silva \
+    --database-dir annotation_references \
+    --reference-database silva \
+    mothur_sop_data
 ```
 
-## Prepare Other Executables
-
-Build `lca`:
-
-```
-cd resources/lca_src
-make
-```
-
-## Executing the Workflow
-
-To run the workflow across 24 cores:
+Dependencies are installed by default in the results directory defined on the
+command line as `--out-dir`. If you want to re-use dependencies across many
+analyses and not have to re-install each time you update the output directory,
+use Snakemake's `--conda-prefix`:
 
 ```
-cd hundo
-snakemake --configfile resources/16s.config.yaml --config eid=test-experiment
+hundo annotate \
+    --out-dir mothur_sop_silva \
+    --database-dir annotation_references \
+    --reference-database silva \
+    mothur_sop_data \
+    --conda-prefix /Users/brow015/devel/hundo/example/conda
 ```
 
-`eid` is our experiment ID and represents how we structure our results directory. It can also be specified in the configuration file by adding:
+# Output
 
-```
-eid: test-experiment
-```
+**OTU.biom**
 
-Running the same command with `eid` defined in the configuration file would look like:
+Biom table with raw counts per sample and their associated taxonomic assignment formatted to be compatible with downstream tools like phyloseq.
 
-```
-snakemake --configfile our-new-config.yaml
-```
+**OTU.fasta**
 
-# Results
+Representative DNA sequences of each OTU.
 
-Using the above example, our results will be written to:
+**OTU.tree**
 
-```
-results/test-experiment
-```
+Newick tree representation of aligned OTU sequences.
 
-Methods and summary data can be found in:
+**OTU.txt**
 
-```
-results/test-experiment/97/blast/README.html
-```
+Tab-delimited text table with columns OTU ID, a column for each sample, and taxonomy assignment in the final column as a comma delimited list.
 
-The summary portion of an example `README.html`:
+**OTU_aligned.fasta**
 
-![readme](resources/readme_summary.png)
+OTU sequences after alignment using Clustal Omega.
 
-# Configuration
+**all-sequences.fasta**
 
-See sample configuration files in resources for defaults. Reference database information has been pre-filled to an extent and encompasses databases included in this repository.
+Quality-controlled, dereplicated DNA sequences of all samples. The header of each record identifies the sample of origin and the count resulting from dereplication.
 
-Notable options are:
+**blast-hits.txt**
 
-```
-annotation_method: blast
-```
+The BLAST assignments per OTU sequence.
 
-This performs alignment using BLAST. The alternative, if you prefer to use USEARCH, is:
+**summary.html**
 
-```
-annotation_method: utax
-```
+Captures and summarizes data of the experimental dataset. Things like sequence quality:
 
-Reference-based chimera filtering is optional and can be disabled with:
+![plot](resources/sequence_quality.png)
 
-```
-chimera_filter_seed_sequences: false
-```
+And counts per sample at varying stages of pre-processing:
 
-Using both `utax` and `blast` on the same experiment will not overwrite any existing data. Output will be available for both methods.
+![plot](resources/count_summary.png)
 
-Altering `percent_of_allowable_difference` also write an entirely new output directory under which analyses are performed.
+Taxonomies are also summarized per sample across phylum, class, and order:
 
-This looks like:
-
-```
-test-experiment/
-    ├── 97                                      # clustering pairwise identity threshold
-    │   ├── blast
-    │   │   ├── blast_hits.txt                  # raw blast hits per OTU seed seq
-    │   │   ├── lca_assignments.txt             # raw lca results TSV from blast hits
-    │   │   ├── OTU.biom                        # tax annotated biom (no metadata, no normalization)
-    │   │   ├── OTU_tax.fasta                   # otu seqs with tax in FASTA header
-    │   │   ├── OTU.txt                         # tab delimited otu table with taxonomy
-    │   │   └── README.html                     # results report when annotation method is 'blast'
-    │   ├── logs
-    │   │   ├── cluster_sequences.log
-    │   │   ├── fasttree.log
-    │   │   └── uniques.log
-    │   ├── OTU_aligned.fasta                   # multiple alignment file of otu seed seqs
-    │   ├── OTU.fasta                           # otu seqs without taxonomy
-    │   ├── OTU.tree                            # newick tree of multiple alignment
-    │   └── utax
-    │       ├── logs
-    │       │   └── utax.log
-    │       ├── OTU.biom                        # tax annotated biom (no metadata, no normalization)
-    │       ├── OTU_tax.fasta                   # otu seqs with tax in FASTA header
-    │       ├── OTU.txt                         # tab delimited otu table with taxonomy
-    │       ├── README.html                     # results report when annotation method is 'utax'
-    │       └── utax_hits.txt                   # raw UTAX hits per OTU seed seq
-    ├── demux
-    │   ├── *.fastq.count
-    │   └── *.fastq
-    ├── logs
-    │   ├── quality_filtering_stats.txt
-    │   └── *.count
-    ├── merged_?.fasta                          # error corrected FASTA prior to clustering into OTU seqs
-    ├── merged.fastq                            # all sample reads merged into single file with updated headers
-    └── quality_filter
-        └── *.fastq                             # files that should have been cleaned up!
-```
+![plot](resources/taxonomy_summary.png)
