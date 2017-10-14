@@ -78,7 +78,11 @@ def get_sample_files(config):
                 continue
 
             samples[sample_id] = fastq_paths
-    logger.info("Found %d samples for processing" % len(samples))
+    logger.info("Found %d samples for processing:\n" % len(samples))
+    samples_str = ""
+    for k, v in samples.items():
+        samples_str += "%s: %s; %s\n" % (k, v["r1"], v["r2"])
+    logger.info(samples_str)
     return samples
 
 
@@ -207,13 +211,19 @@ rule create_fasta_from_reference:
         """blastdbcmd -db {params.db} -outfmt %f -entry all -out {output}"""
 
 
-rule count_raw_reads:
+rule get_raw_fastq_qualities:
     input:
-        lambda wc: SAMPLES[wc.sample]["r1"]
+        unpack(lambda wc: SAMPLES[wc.sample])
     output:
-        "logs/{sample}_R1.fastq.count"
+        r1 = "logs/{sample}_R1_eestats.txt",
+        r2 = "logs/{sample}_R2_eestats.txt"
+    conda:
+        CONDAENV
+    threads:
+        1
     shell:
-        "awk '{{n++}}END{{print int(n/4)}}' {input} > {output}"
+        """vsearch --threads {threads} --fastq_eestats {input.r1} --output {output.r1}
+           vsearch --threads {threads} --fastq_eestats {input.r2} --output {output.r2}"""
 
 
 rule trim_and_filter_reads:
@@ -250,11 +260,25 @@ rule trim_and_filter_reads:
                overwrite=true 2> {log}"""
 
 
+rule count_raw_reads:
+    input:
+        "logs/{sample}_quality_filtering_stats.txt"
+    output:
+        "logs/raw_counts/{sample}_R1.count"
+    run:
+        with open(input[0]) as filein, open(output[0], "w") as fileout:
+            for line in filein:
+                if line.startswith("#Total"):
+                    total = int(line.strip().split("\t")[1]) / 2.
+                    print(total, file=fileout)
+                    break
+
+
 rule count_filtered_reads:
     input:
         "tmp/{sample}_R1.fastq"
     output:
-        "logs/{sample}_filtered_R1.fastq.count"
+        "logs/filtered_counts/{sample}_R1.count"
     shell:
         "awk '{{n++}}END{{print int(n/4)}}' {input} > {output}"
 
@@ -282,7 +306,7 @@ rule count_merged_reads:
     input:
         "tmp/{sample}_merged.fastq"
     output:
-        "logs/{sample}_merged.fastq.count"
+        "logs/merged_counts/{sample}_R1.count"
     shell:
         "awk '{{n++}}END{{print int(n/4)}}' {input} > {output}"
 
@@ -577,11 +601,13 @@ rule report:
         file2 = "OTU.fasta",
         file3 = "OTU.tree",
         file4 = "OTU.txt",
-        fastq_stats_pre = expand("logs/{sample}_merged_eestats.txt", sample=SAMPLES),
-        fastq_stats_post = expand("logs/{sample}_merged_filtered_eestats.txt", sample=SAMPLES),
-        raw_counts = expand("logs/{sample}_R1.fastq.count", sample=SAMPLES),
-        filtered_counts = expand("logs/{sample}_filtered_R1.fastq.count", sample=SAMPLES),
-        merged_counts = expand("logs/{sample}_merged.fastq.count", sample=SAMPLES)
+        fastq_stats_pre = expand("logs/{sample}_merged_eestats.txt", sample=SAMPLES.keys()),
+        fastq_stats_post = expand("logs/{sample}_merged_filtered_eestats.txt", sample=SAMPLES.keys()),
+        raw_r1_quals = expand("logs/{sample}_R1_eestats.txt", sample=SAMPLES.keys()),
+        raw_r2_quals = expand("logs/{sample}_R2_eestats.txt", sample=SAMPLES.keys()),
+        raw_counts = expand("logs/raw_counts/{sample}_R1.count", sample=SAMPLES.keys()),
+        filtered_counts = expand("logs/filtered_counts/{sample}_R1.count", sample=SAMPLES.keys()),
+        merged_counts = expand("logs/merged_counts/{sample}_R1.count", sample=SAMPLES.keys())
     shadow:
         "shallow"
     params:
@@ -644,9 +670,9 @@ rule report:
         for sample in SAMPLES:
             sample_counts[sample] = {}
             metrics = ["raw_counts", "filtered_counts", "merged_counts"]
-            filepaths = ["logs/{sample}_R1.fastq.count".format(sample=sample),
-                         "logs/{sample}_filtered_R1.fastq.count".format(sample=sample),
-                         "logs/{sample}_merged.fastq.count".format(sample=sample)]
+            filepaths = ["logs/raw_counts/{sample}_R1.count".format(sample=sample),
+                         "logs/filtered_counts/{sample}_R1.count".format(sample=sample),
+                         "logs/merged_counts/{sample}_R1.count".format(sample=sample)]
 
             for metric, filepath in zip(metrics, filepaths):
                 with open(filepath) as fh:
@@ -717,6 +743,34 @@ rule report:
         order_str = tax_strings["o"]
 
         # fastq ee stats
+
+        # raw reads with R1 and R2 separate
+                # raw_r1_quals = expand("logs/{sample}_R1_eestats.txt", sample=SAMPLES.keys()),
+                # raw_r2_quals = expand("logs/{sample}_R2_eestats.txt", sample=SAMPLES.keys()),
+
+        raw_qual_stats = defaultdict(lambda: defaultdict(list))
+        for r1_stats in input.raw_r1_quals:
+            sample_name = r1_stats.partition("logs/")[-1].partition("_R1")[0]
+            with open(r1_stats) as fh:
+                reader = csv.DictReader(fh, delimiter="\t")
+                for row in reader:
+                    raw_qual_stats["R1"][sample_name].append(row["Mean_Q"])
+        for r2_stats in input.raw_r2_quals:
+            sample_name = r2_stats.partition("logs/")[-1].partition("_R2")[0]
+            with open(r2_stats) as fh:
+                reader = csv.DictReader(fh, delimiter="\t")
+                for row in reader:
+                    raw_qual_stats["R2"][sample_name].append(row["Mean_Q"])
+        raw_qual_stats_str = ""
+        for idx, sample_data in raw_qual_stats.items():
+            color = "#3366cc" if idx == "R1" else "#dc3912"
+            for sample_name, sample_stats in sample_data.items():
+                raw_qual_stats_str += "name: '%s', " % sample_name
+                raw_qual_stats_str += "data: [%s], " % ",".join(sample_stats)
+                raw_qual_stats_str += "color: '%s' },{" % color
+        raw_qual_stats_str.strip("},{")
+
+        # merged reads
         ee_stats = defaultdict(lambda: defaultdict(list))
         for stats_file in input.fastq_stats_pre + input.fastq_stats_post:
             status = "post" if stats_file.endswith("filtered_eestats.txt") else "pre"
@@ -1353,9 +1407,6 @@ rule report:
                       pointPadding: 0.1,
                       borderWidth: 0
                   }}
-                  // series: {{
-                  //     color: '#434348'
-                  // }}
                 }},
                 xAxis: {{
                   title: {{
@@ -1397,9 +1448,6 @@ rule report:
                       pointPadding: 0.1,
                       borderWidth: 0
                   }}
-                  //series: {{
-                //      color: '#434348'
-                  //}}
                 }},
                 xAxis: {{
                   title: {{
@@ -1549,6 +1597,61 @@ rule report:
             }}
 
             $(function() {{
+              $('#methods-qual-plot').highcharts({{
+                chart: {{
+                  type: 'line'
+                }},
+                title: {{
+                  text: 'Mean Quality Scores for R1 and R2'
+                }},
+                legend: {{
+                  enabled: false
+                }},
+                credits: {{
+                  enabled: false
+                }},
+                exporting: {{
+                  enabled: false
+                }},
+                tooltip: {{
+                    headerFormat: '',
+                    pointFormat: '<div style="color:{{series.color}};padding:0">{{series.name}}</div>',
+                    footerFormat: '<div style="font-size:10px"><b>Quality: {{point.y:.1f}}</b></div><div style="font-size:10px">Position: {{point.key}}</div>',
+                    useHTML: true
+                }},
+                plotOptions: {{
+                  column: {{
+                      pointPadding: 0.1,
+                      borderWidth: 0
+                  }},
+                  series: {{
+                      label: {{
+                        enabled: false
+                      }},
+                      line: {{
+                        marker: {{
+                            enabled: false
+                        }}
+                      }}
+                  }}
+                }},
+                xAxis: {{
+                  title: {{
+                    text: 'Position'
+                  }}
+                }},
+                yAxis: {{
+                  title: {{
+                    text: 'Quality (Phred score)'
+                  }}
+                }},
+                series: [{{
+                            {raw_qual_stats_str}
+                        }}]
+              }});
+            }});
+
+            $(function() {{
               $('#methods-ee-plot').highcharts({{
                 chart: {{
                   type: 'line'
@@ -1616,6 +1719,19 @@ rule report:
             :file: {summary_csv}
             :header-rows: 1
 
+        Sequence Quality
+        ****************
+
+        .. raw:: html
+
+            <div id="methods-qual-plot" class="one-col"></div>
+            <div style="display: block; max-width: 800px; min-width: 300px; margin-bottom: 30px;">
+                <div class="legend-rect" style="background-color: #3366cc;"></div>
+                <div style="float: left;">Forward Read (R1)</div>
+                <div class="legend-rect" style="background-color: #dc3912;"></div>
+                <div>Reverse Read (R2)</div>
+            </div>
+
         Sequence Counts
         ***************
 
@@ -1656,18 +1772,18 @@ rule report:
         VSEARCH_ then aggregated into a single FASTA file with headers
         describing the origin and count of the sequence.
 
-        Reads are filtered again based on expected error rates:
+        Prior to creating clusters, reads are filtered again based on expected
+        error rates:
 
         .. raw:: html
 
             <div id="methods-ee-plot" class="one-col"></div>
-            <div style="display: inline-block; max-width: 800px; min-width: 300px;">
+            <div style="display: block; max-width: 800px; min-width: 300px; margin-bottom: 30px;">
                 <div class="legend-rect" style="background-color: #3366cc;"></div>
                 <div style="float: left;">Before EE Filter</div>
                 <div class="legend-rect" style="background-color: #dc3912;"></div>
                 <div>After EE Filter</div>
             </div>
-
 
         To create clusters, the aggregated, merged reads are dereplicated to
         remove singletons by default using VSEARCH. Sequences are preclustered
