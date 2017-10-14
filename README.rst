@@ -22,8 +22,9 @@ dependencies.
 Documentation
 =============
 
-For complete documentation and install instructions, see
-https://hundo.readthedocs.io.
+For complete documentation and install instructions, see:
+
+https://hundo.readthedocs.io
 
 Install
 =======
