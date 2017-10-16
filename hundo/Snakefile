@@ -786,7 +786,7 @@ rule report:
                     raw_qual_stats["R2"][sample_name].append(row["Mean_Q"])
         raw_qual_stats_str = ""
         for idx, sample_data in raw_qual_stats.items():
-            color = "rgba(51,102,204,0.4)" if idx == "R1" else "rgba(220,57,18,0.4)"
+            color = "rgba(51,102,204,0.3)" if idx == "R1" else "rgba(220,57,18,0.3)"
             for sample_name, sample_stats in sample_data.items():
                 raw_qual_stats_str += "name: '%s', " % sample_name
                 raw_qual_stats_str += "data: [%s], " % ",".join(sample_stats)
@@ -804,7 +804,7 @@ rule report:
                     ee_stats[status][sample_name].append(row["Max_EE"])
         ee_qual_str = ""
         for status, sample_data in ee_stats.items():
-            color = "#3366cc" if status == "pre" else "#dc3912"
+            color = "rgba(51,102,204,0.3)" if status == "pre" else "rgba(220,57,18,0.3)"
             for sample_name, sample_stats in sample_data.items():
                 ee_qual_str += "name: '%s', " % sample_name
                 ee_qual_str += "data: [%s], " % ",".join(sample_stats)
