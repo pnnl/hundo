@@ -181,6 +181,24 @@ def get_snakefile():
               default=150,
               show_default=True,
               help="minimum allowable read length after merging")
+@click.option("-am",
+              "--allow-merge-stagger",
+              is_flag=True,
+              default=False,
+              show_default=True,
+              help="allow merging of staggered reads")
+@click.option("-md",
+              "--max-diffs",
+              type=int,
+              default=5,
+              show_default=True,
+              help="maximum number of different bases in overlap")
+@click.option("-mo",
+              "--min-overlap",
+              type=int,
+              default=16,
+              show_default=True,
+              help="minimum length of overlap between reads")
 @click.option(
     "-ee",
     "--maximum-expected-error",
@@ -253,7 +271,8 @@ def run_annotate(
         author, threads, database_dir, filter_adapters, filter_contaminants,
         allowable_kmer_mismatches, reference_kmer_match_length,
         reduced_kmer_min, minimum_passing_read_length, minimum_base_quality,
-        minimum_merge_length, maximum_expected_error, reference_chimera_filter,
+        minimum_merge_length, allow_merge_stagger, max_diffs, min_overlap,
+        maximum_expected_error, reference_chimera_filter,
         minimum_sequence_abundance, percent_of_allowable_difference,
         reference_database, blast_minimum_bitscore, blast_top_fraction,
         read_identity_requirement, snakemake_args):
@@ -290,6 +309,9 @@ def run_annotate(
            "minimum_passing_read_length={minimum_passing_read_length} "
            "minimum_base_quality={minimum_base_quality} "
            "minimum_merge_length={minimum_merge_length} "
+           "fastq_allowmergestagger={allow_merge_stagger} "
+           "fastq_maxdiffs={max_diffs} "
+           "fastq_minovlen={min_overlap} "
            "maximum_expected_error={maximum_expected_error} "
            "reference_chimera_filter={reference_chimera_filter} "
            "minimum_sequence_abundance={minimum_sequence_abundance} "
@@ -317,6 +339,9 @@ def run_annotate(
                minimum_passing_read_length=minimum_passing_read_length,
                minimum_base_quality=minimum_base_quality,
                minimum_merge_length=minimum_merge_length,
+               allow_merge_stagger=allow_merge_stagger,
+               max_diffs=max_diffs,
+               min_overlap=min_overlap,
                maximum_expected_error=maximum_expected_error,
                reference_chimera_filter=reference_chimera_filter,
                minimum_sequence_abundance=minimum_sequence_abundance,
