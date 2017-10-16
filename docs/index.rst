@@ -1,15 +1,11 @@
 .. hundo
 
-``hundo``
-=========
-
-Snakemake-based amplicon processing protocol for 16S and ITS sequences.
 
 .. figure:: _static/logo.png
    :alt: logo
 
 
-|DOI| |Documentation Status| |bioconda-badge|
+Snakemake-based amplicon processing protocol for 16S and ITS sequences.
 
 -  Performs quality control based on quality, can trim adapters, and
    remove sequences matching a contaminant database
@@ -19,6 +15,8 @@ Snakemake-based amplicon processing protocol for 16S and ITS sequences.
    as needed
 -  Generates standard outputs for these data like a newick tree, a
    tabular OTU table with taxonomy, and .biom.
+
+|DOI| |Documentation Status| |bioconda-badge|
 
 This workflow is built using
 `Snakemake <https://snakemake.readthedocs.io/en/stable/>`__ and makes
