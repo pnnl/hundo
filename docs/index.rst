@@ -16,21 +16,15 @@ Snakemake-based amplicon processing protocol for 16S and ITS sequences:
 -  Generates standard outputs for these data like a newick tree, a
    tabular OTU table with taxonomy, and .biom.
 
-
-|DOI| |Documentation Status| |bioconda-badge|
-
 This workflow is built using
 `Snakemake <https://snakemake.readthedocs.io/en/stable/>`__ and makes
 use of `Bioconda <https://bioconda.github.io/>`__ to install its
 dependencies.
 
+|DOI|
 
 .. |DOI| image:: https://zenodo.org/badge/83449413.svg
    :target: https://zenodo.org/badge/latestdoi/83449413
-.. |Documentation Status| image:: https://readthedocs.org/projects/hundo/badge/?version=latest
-   :target: http://hundo.readthedocs.io/en/latest/?badge=latest
-.. |bioconda-badge| image:: https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat-square
-   :target: http://bioconda.github.io
 
 
 Contents:
