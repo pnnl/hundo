@@ -8,7 +8,6 @@ Snakemake-based amplicon processing protocol for 16S and ITS sequences.
 .. figure:: _static/logo.png
    :alt: logo
 
-   logo
 
 |DOI| |Documentation Status| |bioconda-badge|
 
@@ -128,14 +127,12 @@ sequence quality:
 .. figure:: _static/sequence_quality.png
    :alt: plot
 
-   plot
 
 And counts per sample at varying stages of pre-processing:
 
 .. figure:: _static/count_summary.png
    :alt: plot
 
-   plot
 
 Taxonomies are also summarized per sample across phylum, class, and
 order:
@@ -143,7 +140,6 @@ order:
 .. figure:: _static/taxonomy_summary.png
    :alt: plot
 
-   plot
 
 .. |DOI| image:: https://zenodo.org/badge/83449413.svg
    :target: https://zenodo.org/badge/latestdoi/83449413
