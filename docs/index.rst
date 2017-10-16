@@ -5,7 +5,7 @@
 
 Snakemake-based amplicon processing protocol for 16S and ITS sequences.
 
-.. figure:: resources/logo.png
+.. figure:: _static/logo.png
    :alt: logo
 
    logo
@@ -125,14 +125,14 @@ The BLAST assignments per OTU sequence.
 Captures and summarizes data of the experimental dataset. Things like
 sequence quality:
 
-.. figure:: resources/sequence_quality.png
+.. figure:: _static/sequence_quality.png
    :alt: plot
 
    plot
 
 And counts per sample at varying stages of pre-processing:
 
-.. figure:: resources/count_summary.png
+.. figure:: _static/count_summary.png
    :alt: plot
 
    plot
@@ -140,7 +140,7 @@ And counts per sample at varying stages of pre-processing:
 Taxonomies are also summarized per sample across phylum, class, and
 order:
 
-.. figure:: resources/taxonomy_summary.png
+.. figure:: _static/taxonomy_summary.png
    :alt: plot
 
    plot
