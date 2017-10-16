@@ -28,56 +28,70 @@ def get_sample_files(config):
     samples = dict()
     seen = set()
     for fname in os.listdir(fastq_dir):
-        if ".fastq" in fname or ".fq" in fname:
+        if not ".fastq" in fname and not ".fq" in fname:
+            continue
+        fq_path = os.path.join(fastq_dir, fname)
 
-            sample_id = fname.partition(".fastq")[0]
-            if ".fq" in sample_id:
-                sample_id = fname.partition(".fq")[0]
-            sample_id = sample_id.replace("_R1", "").replace("_r1", "").replace("_R2", "").replace("_r2", "")
-            sample_id = sample_id.replace(".", "_").replace(" ", "_").replace("-", "_")
+        sample_id = fname.partition(".fastq")[0]
+        if ".fq" in sample_id:
+            sample_id = fname.partition(".fq")[0]
+        sample_id = sample_id.replace("_R1", "").replace("_r1", "").replace("_R2", "").replace("_r2", "")
+        sample_id = sample_id.replace(".", "_").replace(" ", "_").replace("-", "_")
 
-            fq_path = os.path.join(fastq_dir, fname)
-            if fq_path in seen: continue
-
-            if "_R1" in fname or "_r1" in fname:
-                r2_path = os.path.join(fastq_dir, fname.replace("_R1", "_R2").replace("_r1", "_r2"))
-                if r2_path == fq_path:
-                    logger.error("Unable to locate R2 for %s. Exiting." % fq_path)
-                    sys.exit(1)
-                if not os.path.exists(r2_path):
-                    logger.error("R1 path was found; R2 [%s] was not. Exiting." % r2_path)
-                    sys.exit(1)
-                seen.add(r2_path)
-                if os.path.getsize(fq_path) < config.get("prefilter_file_size", 100000) or \
-                   os.path.getsize(r2_path) < config.get("prefilter_file_size", 100000):
-                    logger.info("%s is being omitted from analysis due to its file size." % sample_id)
-                else:
-                    fastq_paths = {"r1": fq_path, "r2": r2_path}
-
-            elif "_R2" in fname or "_r2" in fname:
-                r1_path = os.path.join(fastq_dir, fname.replace("_R2", "_R1").replace("_r2", "_r1"))
-                if r1_path == fq_path:
-                    logger.error("Unable to locate R1 for %s. Exiting." % fq_path)
-                    sys.exit(1)
-                if not os.path.exists(r1_path):
-                    logger.error("R2 path was found; R1 [%s] was not. Exiting." % r1_path)
-                    sys.exit(1)
-                seen.add(r1_path)
-                if os.path.getsize(fq_path) < config.get("prefilter_file_size", 100000) or \
-                   os.path.getsize(r1_path) < config.get("prefilter_file_size", 100000):
-                    logger.info("%s is being omitted from analysis due to its file size." % sample_id)
-                else:
-                    fastq_paths = {"r1": r1_path, "r2": fq_path}
-
-            else:
-                logger.error("Unable to determine read index for [%s] as it is missing '_R1' or '_R2' designation. Exiting." % fname)
-                sys.exit(1)
-
-            if sample_id in samples:
+        # sample ID after rename
+        if sample_id in seen:
+            # but FASTQ has yet to be added
+            # if one sample has a dash and another an underscore, this
+            # is a case where we should warn the user that this file
+            # is being skipped
+            if not fq_path in seen:
                 logger.warning("Duplicate sample %s was found after renaming; skipping..." % sample_id)
-                continue
+            continue
 
+        # which read index do we have of the pair?
+        if "_R1" in fname or "_r1" in fname:
+            idx = "r1"
+            # simple replace of right-most read index designator
+            if fname.find("_R1") > fname.find("_r1"):
+                other_idx = os.path.join(fastq_dir, "_R2".join(fname.rsplit("_R1", 1)))
+            else:
+                other_idx = os.path.join(fastq_dir, "_r2".join(fname.rsplit("_r1", 1)))
+        elif "_R2" in fname or "_r2" in fname:
+            idx = "r2"
+            if fname.find("_R2") > fname.find("_r2"):
+                other_idx = os.path.join(fastq_dir, "_R1".join(fname.rsplit("_R2", 1)))
+            else:
+                other_idx = os.path.join(fastq_dir, "_r1".join(fname.rsplit("_r2", 1)))
+        else:
+            logger.error("Unable to determine read index for [%s] as it is missing '_R1' or '_R2' designation. Exiting." % fname)
+            sys.exit(1)
+
+        # naming convention not followed and nothing was renamed
+        if other_idx == fq_path:
+            logger.error("Unable to locate matching index for %s. Exiting." % fq_path)
+            sys.exit(1)
+        # not paired-end?
+        if not os.path.exists(other_idx):
+            logger.error("File [%s] for %s was not found. Exiting." % (other_idx, sample_id))
+            sys.exit(1)
+
+        seen.add(fq_path)
+        seen.add(other_idx)
+        seen.add(sample_id)
+
+        if os.path.getsize(fq_path) < config.get("prefilter_file_size", 100000) or \
+           os.path.getsize(other_idx) < config.get("prefilter_file_size", 100000):
+            logger.info("%s is being omitted from analysis due to its file size." % sample_id)
+            fastq_paths = None
+        else:
+            if idx == "r1":
+                fastq_paths = {"r1": fq_path, "r2": other_idx}
+            else:
+                fastq_paths = {"r1": other_idx, "r2": fq_path}
+
+        if fastq_paths:
             samples[sample_id] = fastq_paths
+
     logger.info("Found %d samples for processing:\n" % len(samples))
     samples_str = ""
     for k, v in samples.items():
@@ -290,7 +304,10 @@ rule merge_reads:
     output:
         temp("tmp/{sample}_merged.fastq")
     params:
-        minimum_merge_length = config.get("minimum_merge_length", 150)
+        minimum_merge_length = config.get("minimum_merge_length", 150),
+        fastq_allowmergestagger = "--fastq_allowmergestagger" if config.get("fastq_allowmergestagger", False) else "",
+        fastq_maxdiffs = config.get("fastq_maxdiffs", 5),
+        fastq_minovlen = config.get("fastq_minovlen", 16)
     conda:
         CONDAENV
     log:
@@ -299,6 +316,9 @@ rule merge_reads:
         """vsearch --fastq_mergepairs {input.r1} --reverse {input.r2} \
                --label_suffix \;sample={wildcards.sample}\; \
                --fastq_minmergelen {params.minimum_merge_length} \
+               {params.fastq_allowmergestagger} \
+               --fastq_maxdiffs {params.fastq_maxdiffs} \
+               --fastq_minovlen {params.fastq_minovlen} \
                --fastqout {output} --log {log}"""
 
 
@@ -619,6 +639,9 @@ rule report:
         minimum_passing_read_length = config.get("minimum_passing_read_length"),
         minimum_base_quality = config.get("minimum_base_quality"),
         minimum_merge_length = config.get("minimum_merge_length"),
+        fastq_allowmergestagger = "True" if config.get("fastq_allowmergestagger", False) else "False",
+        fastq_maxdiffs = config.get("fastq_maxdiffs", 5),
+        fastq_minovlen = config.get("fastq_minovlen", 16),
         maximum_expected_error = config.get("maximum_expected_error"),
         reference_chimera_filter = config.get("reference_chimera_filter"),
         minimum_sequence_abundance = config.get("minimum_sequence_abundance"),
@@ -763,7 +786,7 @@ rule report:
                     raw_qual_stats["R2"][sample_name].append(row["Mean_Q"])
         raw_qual_stats_str = ""
         for idx, sample_data in raw_qual_stats.items():
-            color = "#3366cc" if idx == "R1" else "#dc3912"
+            color = "rgba(51,102,204,0.4)" if idx == "R1" else "rgba(220,57,18,0.4)"
             for sample_name, sample_stats in sample_data.items():
                 raw_qual_stats_str += "name: '%s', " % sample_name
                 raw_qual_stats_str += "data: [%s], " % ",".join(sample_stats)
@@ -1837,6 +1860,9 @@ rule report:
             minimum_passing_read_length: {params.minimum_passing_read_length}
             minimum_base_quality: {params.minimum_base_quality}
             minimum_merge_length: {params.minimum_merge_length}
+            allow_merge_stagger: {params.fastq_allowmergestagger}
+            max_diffs: {params.fastq_maxdiffs}
+            min_overlap: {params.fastq_minovlen}
             maximum_expected_error: {params.maximum_expected_error}
             reference_chimera_filter: {params.reference_chimera_filter}
             minimum_sequence_abundance: {params.minimum_sequence_abundance}
