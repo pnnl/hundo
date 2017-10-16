@@ -154,7 +154,10 @@ Contents:
 .. toctree::
    :maxdepth: 2
 
+   install
+   usage
    parameters
+   output
 
 
 Indices and tables
