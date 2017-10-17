@@ -1,8 +1,3 @@
-.. figure:: resources/logo.png
-   :alt: logo
-
-   logo
-
 |DOI| |Documentation Status| |bioconda-badge|
 
 -  Performs quality control based on quality, can trim adapters, and
@@ -39,7 +34,7 @@ set up your channels (numbers 1 and 2). Then:
 
 ::
 
-    conda install python=3.5 pyyaml snakemake biopython biom-format=2.1.5
+    conda install python=3.6 pyyaml snakemake biopython biom-format=2.1.5
     pip install hundo
 
 Usage
@@ -120,27 +115,9 @@ The BLAST assignments per OTU sequence.
 **summary.html**
 
 Captures and summarizes data of the experimental dataset. Things like
-sequence quality:
-
-.. figure:: resources/sequence_quality.png
-   :alt: plot
-
-   plot
-
-And counts per sample at varying stages of pre-processing:
-
-.. figure:: resources/count_summary.png
-   :alt: plot
-
-   plot
-
-Taxonomies are also summarized per sample across phylum, class, and
-order:
-
-.. figure:: resources/taxonomy_summary.png
-   :alt: plot
-
-   plot
+sequence quality, counts per sample at varying stages of pre-processing, and
+summarized taxonomic composition per sample across phylum, class, and
+order.
 
 .. |DOI| image:: https://zenodo.org/badge/83449413.svg
    :target: https://zenodo.org/badge/latestdoi/83449413
