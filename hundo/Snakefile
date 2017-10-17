@@ -450,9 +450,12 @@ rule run_denovo_chimera_filter:
         CONDAENV
     log:
         "logs/chimera-filtered_denovo.log"
+    threads:
+        config.get("threads", 1)
     shell:
         """vsearch --uchime_denovo {input} --nonchimeras {output} \
-               --strand plus --sizein --sizeout --log {log}"""
+               --strand plus --sizein --sizeout --threads {threads} \
+               --log {log}"""
 
 
 rule run_reference_chimera_filter:
@@ -464,10 +467,12 @@ rule run_reference_chimera_filter:
         CONDAENV
     log:
         "logs/chimera-filtered_reference.log"
+    threads:
+        config.get("threads", 1)
     shell:
         """vsearch --uchime_ref {input.fasta} --nonchimeras {output} \
                --strand plus --sizein --sizeout --db {input.db} \
-               --log {log}"""
+               --threads {threads} --log {log}"""
 
 
 rule extract_filtered_sequences:
@@ -507,10 +512,12 @@ rule cluster_sequences:
         CONDAENV
     log:
         "logs/cluster_sequences.log"
+    threads:
+        config.get("threads", 1)
     shell:
         """vsearch --cluster_size {input} --centroids {output.fa} \
                --relabel OTU_ --id {params.otu_id_pct} --log {log} \
-               --sizein --strand plus"""
+               --sizein --strand plus --threads {threads}"""
 
 
 rule run_blast:
