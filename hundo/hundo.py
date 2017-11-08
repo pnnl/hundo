@@ -5,8 +5,13 @@ import os
 import subprocess
 import sys
 from collections import OrderedDict
+# local imports
+import hundo.unite_classifier as unite_lca
+import hundo.crest_classifier as crest_lca
 from hundo import __version__
-from hundo.crest_classifier import run_crest_classifier
+from hundo.blast import parse_blasthits
+from hundo.fasta import read_fasta, format_fasta_record
+
 
 logging.basicConfig(level=logging.INFO,
                     datefmt="%Y-%m-%d %H:%M",
@@ -31,14 +36,14 @@ def cli(obj):
 
 @cli.command("lca", short_help="runs LCA across BLAST hits")
 @click.argument("fasta", type=click.Path(exists=True))
-@click.argument("blasthits", type=click.Path(exists=True))
-@click.argument("mapfile", type=click.Path(exists=True))
-@click.argument("trefile", type=click.Path(exists=True))
-@click.argument("outfasta", type=click.Path())
-@click.argument("outtab", type=click.Path())
+@click.argument("blasthits", type=click.File("r"))
+@click.argument("mapfile", type=click.File("r"))
+@click.argument("trefile", type=click.File("r"))
+@click.argument("outfasta", type=click.File("w"))
+@click.argument("outtab", type=click.File("w"))
 @click.option("--min-score",
               type=int,
-              default=100,
+              default=150,
               show_default=True,
               help="minimum allowable bitscore")
 @click.option(
@@ -48,11 +53,6 @@ def cli(obj):
     show_default=True,
     help=
     "calculate LCA based on HSPS within this fraction of highest scoring HSP")
-@click.option("--filter-euks",
-              is_flag=True,
-              default=False,
-              show_default=True,
-              help="filter eukaryotic assigned OTUs")
 def run_lca(fasta,
             blasthits,
             mapfile,
@@ -60,13 +60,72 @@ def run_lca(fasta,
             outfasta,
             outtab,
             min_score=100,
-            top_fraction=0.98,
-            filter_euks=False):
+            top_fraction=0.98):
     """Classifies BLAST HSPs using associated newick tree with corresponding
     names and map.
     """
-    run_crest_classifier(fasta, blasthits, mapfile, trefile, outfasta, outtab,
-                         min_score, top_fraction, filter_euks)
+
+    def print_unite(name, seq, tx, fa, tsv):
+        full_name = "{name};tax={taxonomy}".format(name=name.strip(";"), taxonomy=",".join(tx))
+        print(format_fasta_record(full_name, seq), file=fa)
+        print(name, ";".join(tx), sep="\t", file=tsv)
+
+    def unite_namemap(mapfile):
+        m = dict()
+        for line in mapfile:
+            toks = line.strip().split("\t")
+            m[toks[0]] = toks[1]
+        return m
+
+    protocol = "16S" if not "unite" in os.path.basename(mapfile.name) else "ITS"
+    logging.info("Parsing BLAST hits")
+    hsps = parse_blasthits(blasthits, min_score, top_fraction)
+    unknown_taxonomy = ["%s__?" % i for i in "kpcofgs"]
+    if protocol == "ITS":
+        tree = unite_lca.Tree(trefile)
+        namemap = unite_namemap(mapfile)
+        logging.info("Performing LCA per OTU")
+        with open(fasta) as fh:
+            for name, seq in read_fasta(fh):
+                if name in hsps:
+                    hits = hsps[name]
+                    # need to translate fasta names of blast hits to
+                    # species names of the taxonomy map
+                    translated_hits = [namemap[i] for i in hits.names]
+                    taxonomy = tree.lca(translated_hits, hits.percent_ids[-1])
+                    print_unite(name, seq, taxonomy, outfasta, outtab)
+                else:
+                    # unknown
+                    print_unite(name, seq, unknown_taxonomy, outfasta, outtab)
+
+    # silva/gg
+    else:
+        otus = OrderedDict()
+        with open(fasta) as fh:
+            for name, seq in read_fasta(fh):
+                otus[name] = crest_lca.OTU(name, seq)
+        tree = crest_lca.Tree(mapfile, trefile)
+        # update OTUs with a classification
+        for otu_name, hits in hsps.items():
+            otu = otus[otu_name]
+            lca_node = tree.get_common_ancestor(hits.names)
+            if not lca_node:
+                logging.debug("No LCA -- assigning to No Hits: %s" % hits.names)
+                otu.classification = tree.no_hits
+                continue
+
+            while lca_node.name in tree.assignment_min and \
+                    hits.percent_ids[-1] < tree.assignment_min[lca_node.name] and \
+                    lca_node is not tree.root:
+                lca_node = tree.get_parent(lca_node)
+            otu.classification = lca_node
+        for otu_id, otu in otus.items():
+            taxonomy = tree.get_taxonomy(otu.classification)
+            full_name = ("{name};"
+                         "tax={taxonomy}").format(name=otu.name.strip(";"),
+                                                  taxonomy=",".join(["%s__%s" % (abb, tax) for abb, tax in taxonomy.items()]))
+            print(format_fasta_record(full_name, otu.sequence), file=outfasta)
+            print(otu_id, ";".join(["%s__%s" % (abb, tax) for abb, tax in taxonomy.items()]), sep="\t", file=outtab)
 
 
 def get_snakefile():
@@ -355,4 +414,9 @@ def run_annotate(
                    0].startswith("-") else "--",
                args=" ".join(snakemake_args))
     logging.info("Executing: " + cmd)
-    subprocess.check_call(cmd, shell=True)
+
+    try:
+        subprocess.check_call(cmd, shell=True)
+    except subprocess.CalledProcessError as e:
+        # removes the traceback
+        logging.critical(e)
