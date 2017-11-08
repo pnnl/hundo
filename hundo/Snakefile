@@ -178,11 +178,11 @@ REFERENCES = {"greengenes.fasta.nhr": "200f1b4356e59be524525e4ca83cefc1",
               "silvamod128.fasta.nsq": "7e12efc4ab9019c9d79809861922a001",
               "silvamod128.map": "00500c7f215a89a3240c907af4f75f33",
               "silvamod128.tre": "340864d9d32e8561f75ec0b0a9a6c3d1",
-              "unite.fasta.nhr": "be55d7142d812abfe508bec8038dbbe8",
-              "unite.fasta.nin": "f8c3748280ee07cf28983ba8ec9df601",
-              "unite.fasta.nsq": "fe952b51a5a97445221f1287699cf33b",
-              "unite.map": "8f5b11fe1074109627e010418ffb467b",
-              "unite.tre": "3e1c586184e91a3cfa10a19c9855169c"}
+              "unite.fasta.nhr": "3ce60ad0d3eee81246c6915e64bf3122",
+              "unite.fasta.nin": "962c9364b6cb3da2b9457546838bb6fb",
+              "unite.fasta.nsq": "796e7338cdbb3d659951e380fd2b8104",
+              "unite.map": "11984b9f45fbac120824de516a133e45",
+              "unite.tre": "d50a5f427c22964906f2d6fc1b7cf220"}
 REF = [k for k in REFERENCES.keys() if k.startswith(config.get("reference_database", "silva"))]
 BLASTREF = [os.path.join(config.get("database_dir", "."), i) for i in REF]
 REFFASTA = [os.path.join(config.get("database_dir", "."), i) for i in REF if ".fasta" in i][0].rpartition(".")[0]
@@ -207,7 +207,7 @@ rule download_reference_data:
     output:
         "%s/{filename}" % config.get("database_dir", ".")
     run:
-        shell("curl 'https://zenodo.org/record/808727/files/{wildcards.filename}' -s > {output}")
+        shell("curl 'https://zenodo.org/record/1043977/files/{wildcards.filename}' -s > {output}")
         if not REFERENCES[os.path.basename(output[0])] == md5(output[0]):
             raise OSError(2, "Invalid checksum", output[0])
 
