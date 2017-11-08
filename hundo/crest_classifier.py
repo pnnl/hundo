@@ -10,9 +10,6 @@ import re
 import sys
 from collections import defaultdict, OrderedDict
 from Bio import Phylo
-from hundo.blast import BlastHits
-from hundo.fasta import read_fasta, format_fasta_record
-
 
 BLAST6 = ["qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart",
           "qend", "sstart", "send", "evalue", "bitscore"]
@@ -49,7 +46,7 @@ class Tree(object):
         for child in self.get_all_children(self.root):
             self.node_ids[child.name] = child
 
-        # why not just remove these from the map?
+        # reference sequence accessions
         accession_re = [re.compile("\D\D\d\d\d\d\d\d\Z"),
                        re.compile("\D\d\d\d\d\d\Z"),
                        re.compile("\D\D\D\D\d\d\d\d\d\d\d\d\d\Z"),
@@ -205,52 +202,3 @@ class OTU(object):
         self.name = name
         self.sequence = sequence
         self.classification = classification
-
-
-def parse_blasthits(blasthits, otus, tre, min_score=155, top_fraction=0.98, euk_filter=False):
-    hsps = defaultdict(lambda: BlastHits(top_fraction=top_fraction))
-    with open(blasthits) as blast_hits_fh:
-        # TODO iterator as some may not be able to process very large files
-        for hsp in blast_hits_fh:
-            toks = dict(zip(BLAST6, hsp.strip().split("\t")))
-            if float(toks["bitscore"]) < min_score: continue
-            hsps[toks["qseqid"]].add(toks["sseqid"], float(toks["pident"]) / 100, toks["bitscore"])
-
-    for otu_name, hits in hsps.items():
-        otu = otus[otu_name]
-        lca_node = tre.get_common_ancestor(hits.names)
-        if not lca_node:
-            logging.debug("No LCA -- assigning to No Hits: %s" % hits.names)
-            otu.classification = tre.no_hits
-            continue
-
-        while lca_node.name in tre.assignment_min and \
-                hits.percent_ids[-1] < tre.assignment_min[lca_node.name] and \
-                lca_node is not tre.root:
-            lca_node = tre.get_parent(lca_node)
-
-        if euk_filter and tre.get_path(lca_node)[1].name == "Eukaryota":
-            otu.classification = tre.no_hits
-        else:
-            otu.classification = lca_node
-    return otus
-
-
-def run_crest_classifier(fasta, blasthits, mapfile, trefile, outfasta, outtab, min_score, top_fraction, euk_filter):
-    otus = OrderedDict()
-    logging.info("Reading the input fasta (%s)" % fasta)
-    with open(fasta) as fh:
-        for name, seq in read_fasta(fh):
-            otus[name] = OTU(name, seq)
-
-    logging.info("Parsing the map and tree inputs")
-    tre = Tree(mapfile, trefile)
-
-    logging.info("Classifying BLAST hits")
-    otus = parse_blasthits(blasthits, otus, tre, min_score, top_fraction, euk_filter)
-    with open(outfasta, "w") as fasta_out, open(outtab, "w") as tsv_out:
-        for otu_id, otu in otus.items():
-            taxonomy = tre.get_taxonomy(otu.classification)
-            full_name = "{name};tax={taxonomy}".format(name=otu.name.strip(";"), taxonomy=",".join(["%s__%s" % (abb, tax) for abb, tax in taxonomy.items()]))
-            print(format_fasta_record(full_name, otu.sequence), file=fasta_out)
-            print(otu_id, ";".join(["%s__%s" % (abb, tax) for abb, tax in taxonomy.items()]), sep="\t", file=tsv_out)
