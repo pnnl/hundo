@@ -1,5 +1,9 @@
 import bisect
-from collections import deque
+from collections import defaultdict, deque
+
+BLAST6 = ["qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart",
+          "qend", "sstart", "send", "evalue", "bitscore"]
+
 
 
 class BlastHits(object):
@@ -84,3 +88,12 @@ class BlastHits(object):
             # left most index match
             idx = names_reversed.index(most_common)
             return names_reversed[idx]
+
+
+def parse_blasthits(blasthits, min_score=155, top_fraction=0.98):
+    hsps = defaultdict(lambda: BlastHits(top_fraction=top_fraction))
+    for hsp in blasthits:
+        toks = dict(zip(BLAST6, hsp.strip().split("\t")))
+        if float(toks["bitscore"]) < min_score: continue
+        hsps[toks["qseqid"]].add(toks["sseqid"], float(toks["pident"]) / 100, toks["bitscore"])
+    return hsps
