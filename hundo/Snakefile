@@ -552,7 +552,7 @@ rule compute_lca:
         fasta = "OTU_tax.fasta",
         tsv = temp("OTU_assignments.tsv")
     params:
-        min_score = config.get("blast_minimum_bitscore", 100),
+        min_score = config.get("blast_minimum_bitscore", 125),
         top_fraction = config.get("blast_top_fraction", 0.95)
     shell:
         """hundo lca --min-score {params.min_score} \

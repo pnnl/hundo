@@ -43,13 +43,13 @@ def cli(obj):
 @click.argument("outtab", type=click.File("w"))
 @click.option("--min-score",
               type=int,
-              default=150,
+              default=125,
               show_default=True,
               help="minimum allowable bitscore")
 @click.option(
     "--top-fraction",
     type=float,
-    default=0.98,
+    default=0.95,
     show_default=True,
     help=
     "calculate LCA based on HSPS within this fraction of highest scoring HSP")
@@ -59,8 +59,8 @@ def run_lca(fasta,
             trefile,
             outfasta,
             outtab,
-            min_score=100,
-            top_fraction=0.98):
+            min_score=125,
+            top_fraction=0.95):
     """Classifies BLAST HSPs using associated newick tree with corresponding
     names and map.
     """
@@ -302,7 +302,7 @@ def get_snakefile():
 )
 @click.option("-mb",
               "--blast-minimum-bitscore",
-              default=100,
+              default=125,
               type=int,
               show_default=True,
               help="filter out alignments below this bitscore threshold")
