@@ -53,27 +53,26 @@ class Tree(object):
                        re.compile("\D\D\D\D\d\d\d\d\d\d\d\d\Z")]
 
         # Read nodes from .map file (id\t name\t cutoff)
-        with open(mapfile, encoding="ISO-8859-1") as fh:
-            for line in fh:
-                toks = line.strip().split("\t")
-                node_id = toks[0]
-                name = toks[1]
-                similarity_cutoff = float(toks[3])
+        for line in mapfile:
+            toks = line.strip().split("\t")
+            node_id = toks[0]
+            name = toks[1]
+            similarity_cutoff = float(toks[3])
 
-                # Find node and map name or accession to it
-                n = self.node_ids.get(node_id)
-                if n:
-                    self.node_names[name] = n
-                    # Unless this is just an accession, update node name and assignment min.
-                    if similarity_cutoff >= 0 and \
-                        not (accession_re[0].match(name) or \
-                             accession_re[1].match(name) or \
-                             accession_re[2].match(name) or \
-                             accession_re[3].match(name)):
-                        self.assignment_min[name] = similarity_cutoff
-                        n.name = name
-                else:
-                    logging.error("Error: Node %s (%s) not found in tree" % (node_id, name))
+            # Find node and map name or accession to it
+            n = self.node_ids.get(node_id)
+            if n:
+                self.node_names[name] = n
+                # Unless this is just an accession, update node name and assignment min.
+                if similarity_cutoff >= 0 and \
+                    not (accession_re[0].match(name) or \
+                         accession_re[1].match(name) or \
+                         accession_re[2].match(name) or \
+                         accession_re[3].match(name)):
+                    self.assignment_min[name] = similarity_cutoff
+                    n.name = name
+            else:
+                logging.error("Error: Node %s (%s) not found in tree" % (node_id, name))
 
     def verify_node(self, node):
         if isinstance(node, Phylo.BaseTree.Clade):
