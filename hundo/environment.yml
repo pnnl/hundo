@@ -14,4 +14,4 @@ dependencies:
     - fasttree=2.1.9
     - numpy
     - pyyaml
-    - vsearch=2.4.3
+    - vsearch=2.6.0
