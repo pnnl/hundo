@@ -394,11 +394,16 @@ rule dereplicate_sequences_by_sample:
 
 rule combine_merged_reads:
     input:
-        expand("tmp/{sample}_dereplicated.fasta", sample=SAMPLES)
+        fastas = expand("tmp/{sample}_dereplicated.fasta", sample=SAMPLES)
     output:
-        "all-sequences.fasta"
-    shell:
-        "cat {input} > {output}"
+        fasta = "all-sequences.fasta"
+    run:
+        import shutil
+
+        with open(output.fasta, 'wb') as ofh:
+            for f in input.fastas:
+                with open(f, 'rb') as ifh:
+                    shutil.copyfileobj(ifh, ofh, 1024*1024*10)
 
 
 rule dereplicate_sequences:
@@ -1937,5 +1942,6 @@ rule report:
 
 
 onsuccess:
-    shutil.rmtree("tmp", ignore_errors=True)
+    if not config["no_temp_declared"]:
+        shutil.rmtree("tmp", ignore_errors=True)
     print("Protocol [%s] completed successfully." % PROTOCOL_VERSION)

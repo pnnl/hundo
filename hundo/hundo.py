@@ -356,6 +356,11 @@ def run_annotate(
     filter_contaminants = os.path.realpath(
         filter_contaminants) if filter_contaminants else ""
 
+    no_temp_declared = False
+    for sa in snakemake_args:
+        if sa == "--nt" or sa == "--notemp":
+            no_temp_declared = True
+
     cmd = ("snakemake --snakefile {snakefile} --directory {out_dir} "
            "--printshellcmds --jobs {jobs} --rerun-incomplete "
            "--nolock {conda} {dryrun} "
@@ -379,7 +384,8 @@ def run_annotate(
            "blast_minimum_bitscore={blast_minimum_bitscore} "
            "blast_top_fraction={blast_top_fraction} "
            "read_identity_requirement={read_identity_requirement} "
-           "prefilter_file_size={prefilter_file_size} {add_args} "
+           "prefilter_file_size={prefilter_file_size} "
+           "no_temp_declared={no_temp_declared} {add_args} "
            "{args}").format(
                snakefile=get_snakefile(),
                out_dir=os.path.realpath(out_dir),
@@ -410,6 +416,7 @@ def run_annotate(
                blast_top_fraction=blast_top_fraction,
                read_identity_requirement=read_identity_requirement,
                prefilter_file_size=prefilter_file_size,
+               no_temp_declared=no_temp_declared,
                add_args="" if snakemake_args and snakemake_args[
                    0].startswith("-") else "--",
                args=" ".join(snakemake_args))
