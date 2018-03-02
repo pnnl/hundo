@@ -264,7 +264,7 @@ rule trim_and_filter_reads:
     log:
         "logs/{sample}_quality_filter.log"
     threads:
-        config.get("threads", 1)
+        max(int(config.get("threads", 4) * 0.25), 1)
     shell:
         """bbduk2.sh in={input.r1} in2={input.r2} out={output.r1} \
                out2={output.r2} {params.rref} {params.lref} {params.fref} \
@@ -602,6 +602,7 @@ rule create_biom_from_txt:
 
 
 rule multiple_align:
+    # TODO: consider testing https://doi.org/10.1093/bioinformatics/bty121
     input:
         "OTU.fasta"
     output:
