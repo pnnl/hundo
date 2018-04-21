@@ -625,7 +625,7 @@ rule newick_tree:
     log:
         "logs/fasttree.log"
     shell:
-        "FastTree -nt -gamma -spr 4 -log {log} -quiet {input} > {output}"
+        "FastTreeMP -nt -gamma -spr 4 -log {log} -quiet {input} > {output}"
 
 
 rule report:
