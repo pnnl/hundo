@@ -6,7 +6,8 @@ paired-end, named in a semi-conventional style starting sample ID,
 contain "\_R1" (or "\_r1") and "\_R2" (or "\_r2") index identifiers, and
 have an extension ".fastq" or ".fq". The files may be gzipped and end
 with ".gz". By default, both R1 and R2 need to be larger than 10K in
-size. This cutoff is arbitrary and can be set using
+size, which corresponds to around 100 reads in a compressed fastq
+file. This cutoff is arbitrary and can be set using
 ``--prefilter-file-size``.
 
 Using the example data of the mothur SOP located in our tests directory,
