@@ -620,12 +620,16 @@ rule newick_tree:
         "OTU_aligned.fasta"
     output:
         "OTU.tree"
+    threads:
+        config.get("threads", 1)
     conda:
         CONDAENV
     log:
         "logs/fasttree.log"
     shell:
-        "FastTreeMP -nt -gamma -spr 4 -log {log} -quiet {input} > {output}"
+        """export OMP_NUM_THREADS={threads} && \
+            FastTreeMP -nt -gamma -spr 4 -log {log} -quiet {input} > {output}
+        """
 
 
 rule report:
