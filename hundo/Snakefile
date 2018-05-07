@@ -525,32 +525,68 @@ rule cluster_sequences:
                --sizein --strand plus --threads {threads}"""
 
 
-rule run_blast:
-    input:
-        fasta = "OTU.fasta",
-        # force download
-        db = BLASTREF,
-        db_fa = REFFASTA
-    output:
-        "blast-hits.txt"
-    params:
-        # works due to file naming convention
-        db = REFFASTA,
-        num_alignments = config.get("blast_num_alignments", 25)
-    conda:
-        CONDAENV
-    threads:
-        config.get("threads", 1)
-    shell:
-        """blastn -query {input.fasta} -db {params.db} \
-               -num_alignments {params.num_alignments} \
-               -outfmt 6 -out {output} -num_threads {threads}"""
 
+
+if config.get('aligner')=='blast':
+
+    rule run_aligner: #I addded this
+        input:
+            fasta = "OTU.fasta",
+            # force download
+            db = BLASTREF,
+            db_fa = REFFASTA
+        output:
+            'local-hits.txt' # I added this
+            #"blast-hits.txt" #can fix this to be the aligner chosen?
+        params:
+            # works due to file naming convention
+            db = REFFASTA,
+            num_alignments = config.get("blast_num_alignments", 25),
+            id_req = config.get("min_id_req", 0.6),
+            max_rej = config.get("max_reject", 100),
+
+        conda:
+            CONDAENV
+        threads:
+            config.get("threads", 1)
+        shell:
+            """blastn -query {input.fasta} -db {params.db} \
+                   -num_alignments {params.num_alignments} \
+                   -outfmt 6 -out {output} -num_threads {threads}"""
+
+else:
+    rule run_aligner: #I addded this
+        input:
+            fasta = "OTU.fasta",
+            # force download
+            db = BLASTREF,
+            db_fa = REFFASTA
+        output:
+            'local-hits.txt' # I added this
+            #"blast-hits.txt" #can fix this to be the aligner chosen?
+        params:
+            # works due to file naming convention
+            db = REFFASTA,
+            num_alignments = config.get("blast_num_alignments", 25),
+            id_req = config.get("min_id_req", 0.6),
+            max_rej = config.get("max_reject", 100),
+
+        conda:
+            CONDAENV
+        threads:
+            config.get("threads", 1)
+        shell:
+            """vsearch --usearch_global {input.fasta} \
+                  --db {params.db} \
+                  --maxaccepts {params.num_alignments} --threads {threads} --maxrejects {params.max_rej} \
+                    --strand plus --id {params.id_req} \
+                    --blast6out {output}"""
+    #run vsearch
 
 rule compute_lca:
     input:
         fasta = "OTU.fasta",
-        hits = "blast-hits.txt",
+        hits = "local-hits.txt",
         map = REFMAP,
         tre = REFTRE
     output:
@@ -558,12 +594,14 @@ rule compute_lca:
         tsv = temp("OTU_assignments.tsv")
     params:
         min_score = config.get("blast_minimum_bitscore", 125),
-        top_fraction = config.get("blast_top_fraction", 0.95)
+        min_pid= config.get("min_pid",.85),
+        aligner=config.get('aligner'),
+        top_fraction = .99 if not config.get('aligner')=='blast' else config.get("blast_top_fraction", 0.95),
     shell:
-        """hundo lca --min-score {params.min_score} \
+        """hundo lca --min-score {params.min_score} --min-pid {params.min_pid} \
                --top-fraction {params.top_fraction} \
                {input.fasta} {input.hits} {input.map} \
-               {input.tre} {output.fasta} {output.tsv}"""
+               {input.tre} {output.fasta} {output.tsv} --aligner {params.aligner}"""
 
 
 rule compile_counts:

@@ -9,7 +9,7 @@ from collections import OrderedDict
 import hundo.unite_classifier as unite_lca
 import hundo.crest_classifier as crest_lca
 from hundo import __version__
-from hundo.blast import parse_blasthits
+from hundo.blast import parse_blasthits, parse_vsearchhits
 from hundo.fasta import read_fasta, format_fasta_record
 
 
@@ -34,9 +34,9 @@ def cli(obj):
     """
 
 
-@cli.command("lca", short_help="runs LCA across BLAST hits")
+@cli.command("lca", short_help="runs LCA across aligned hits")
 @click.argument("fasta", type=click.Path(exists=True))
-@click.argument("blasthits", type=click.File("r"))
+@click.argument("aligned_hits", type=click.File("r"))
 @click.argument("mapfile", type=click.File("r"))
 @click.argument("trefile", type=click.File("r"))
 @click.argument("outfasta", type=click.File("w"))
@@ -46,22 +46,34 @@ def cli(obj):
               default=125,
               show_default=True,
               help="minimum allowable bitscore")
+@click.option("--min-pid", type=float, default=0.85, show_default=True, help="min percent id")
 @click.option(
     "--top-fraction",
     type=float,
-    default=0.95,
+    default=0.99,
     show_default=True,
     help=
-    "calculate LCA based on HSPS within this fraction of highest scoring HSP")
+    "calculate LCA based on HSPS within this fraction of highest scoring HSP. Vsearch accuracy decreases with a lower number than this")
+
+@click.option(
+    "--aligner",
+    type=str,
+    default='blast',
+    show_default=True,
+    help=
+    "pick which aligner that you would like to use, blast or vsearch. default:blast")
+
 def run_lca(fasta,
-            blasthits,
+            aligned_hits,
             mapfile,
             trefile,
             outfasta,
             outtab,
-            min_score=125,
-            top_fraction=0.95):
-    """Classifies BLAST HSPs using associated newick tree with corresponding
+            min_score,
+            min_pid,
+            top_fraction,
+            aligner):
+    """Classifies BLAST or VSEARCH HSPs using associated newick tree with corresponding
     names and map.
     """
 
@@ -78,8 +90,11 @@ def run_lca(fasta,
         return m
 
     protocol = "16S" if not "unite" in os.path.basename(mapfile.name) else "ITS"
-    logging.info("Parsing BLAST hits")
-    hsps = parse_blasthits(blasthits, min_score, top_fraction)
+    logging.info("Parsing aligned hits")
+    if aligner=='vsearch':
+        hsps = parse_vsearchhits(aligned_hits, min_pid, top_fraction)
+    else:
+        hsps = parse_blasthits(aligned_hits, min_score, top_fraction)
     unknown_taxonomy = ["%s__?" % i for i in "kpcofgs"]
     if protocol == "ITS":
         tree = unite_lca.Tree(trefile)
@@ -324,6 +339,13 @@ def get_snakefile():
     help=
     "reflects the difference between OTU clusters to reduce ambiguous assignment"
 )
+@click.option(
+    "--aligner",
+    type=str,
+    default='blast',
+    show_default=True,
+    help=
+    "pick which aligner that you would like to use, blast or vsearch. default:blast")
 @click.argument("snakemake_args", nargs=-1, type=click.UNPROCESSED)
 def run_annotate(
         fastq_dir, prefilter_file_size, jobs, out_dir, no_conda, dryrun,
@@ -334,7 +356,7 @@ def run_annotate(
         maximum_expected_error, reference_chimera_filter,
         minimum_sequence_abundance, percent_of_allowable_difference,
         reference_database, blast_minimum_bitscore, blast_top_fraction,
-        read_identity_requirement, snakemake_args):
+        read_identity_requirement, aligner, snakemake_args):
     """
     Run annotation across paired-end sequence data contained in a directory.
     Both R1 and R2 are expected to be present in the same directory and have
@@ -385,6 +407,7 @@ def run_annotate(
            "blast_top_fraction={blast_top_fraction} "
            "read_identity_requirement={read_identity_requirement} "
            "prefilter_file_size={prefilter_file_size} "
+           "aligner={aligner} "
            "no_temp_declared={no_temp_declared} {add_args} "
            "{args}").format(
                snakefile=get_snakefile(),
@@ -416,6 +439,7 @@ def run_annotate(
                blast_top_fraction=blast_top_fraction,
                read_identity_requirement=read_identity_requirement,
                prefilter_file_size=prefilter_file_size,
+               aligner=aligner,
                no_temp_declared=no_temp_declared,
                add_args="" if snakemake_args and snakemake_args[
                    0].startswith("-") else "--",
