@@ -121,10 +121,10 @@ html_theme = 'sphinx_rtd_theme'
 
 # The name for this set of Sphinx documents.
 # "<project> v<release> documentation" by default.
-html_title = 'hundo' + release
+html_title = 'hundo ' + release
 
 # A shorter title for the navigation bar.  Default is the same as html_title.
-html_short_title = None
+html_short_title = 'hundo Docs'
 
 # The name of an image file (relative to this directory) to place at the top
 # of the sidebar.

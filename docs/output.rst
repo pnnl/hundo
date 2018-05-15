@@ -1,6 +1,8 @@
 Annotation Output
 =================
 
+An interactive example is available at https://pnnl.github.io/hundo/.
+
 **OTU.biom**
 
 Biom table with raw counts per sample and their associated taxonomic
