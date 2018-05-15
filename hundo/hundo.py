@@ -1,21 +1,19 @@
-import click
 import logging
 import multiprocessing
 import os
 import subprocess
 import sys
 from collections import OrderedDict
-# local imports
-import hundo.unite_classifier as unite_lca
-import hundo.crest_classifier as crest_lca
+
+import click
+
 from hundo import __version__
-from hundo.blast import parse_blasthits
-from hundo.fasta import read_fasta, format_fasta_record
 
-
-logging.basicConfig(level=logging.INFO,
-                    datefmt="%Y-%m-%d %H:%M",
-                    format="[%(asctime)s %(levelname)s] %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    datefmt="%Y-%m-%d %H:%M",
+    format="[%(asctime)s %(levelname)s] %(message)s",
+)
 
 
 @click.group(context_settings=dict(help_option_names=["-h", "--help"]))
@@ -41,32 +39,43 @@ def cli(obj):
 @click.argument("trefile", type=click.File("r"))
 @click.argument("outfasta", type=click.File("w"))
 @click.argument("outtab", type=click.File("w"))
-@click.option("--min-score",
-              type=int,
-              default=125,
-              show_default=True,
-              help="minimum allowable bitscore")
+@click.option(
+    "--min-score",
+    type=int,
+    default=125,
+    show_default=True,
+    help="minimum allowable bitscore",
+)
 @click.option(
     "--top-fraction",
     type=float,
     default=0.95,
     show_default=True,
-    help=
-    "calculate LCA based on HSPS within this fraction of highest scoring HSP")
-def run_lca(fasta,
-            blasthits,
-            mapfile,
-            trefile,
-            outfasta,
-            outtab,
-            min_score=125,
-            top_fraction=0.95):
+    help="calculate LCA based on HSPS within this fraction of highest scoring HSP",
+)
+def run_lca(
+    fasta,
+    blasthits,
+    mapfile,
+    trefile,
+    outfasta,
+    outtab,
+    min_score=125,
+    top_fraction=0.95,
+):
     """Classifies BLAST HSPs using associated newick tree with corresponding
     names and map.
     """
 
+    import hundo.unite_classifier as unite_lca
+    import hundo.crest_classifier as crest_lca
+    from hundo.blast import parse_blasthits
+    from hundo.fasta import read_fasta, format_fasta_record
+
     def print_unite(name, seq, tx, fa, tsv):
-        full_name = "{name};tax={taxonomy}".format(name=name.strip(";"), taxonomy=",".join(tx))
+        full_name = "{name};tax={taxonomy}".format(
+            name=name.strip(";"), taxonomy=",".join(tx)
+        )
         print(format_fasta_record(full_name, seq), file=fa)
         print(name, ";".join(tx), sep="\t", file=tsv)
 
@@ -97,7 +106,6 @@ def run_lca(fasta,
                 else:
                     # unknown
                     print_unite(name, seq, unknown_taxonomy, outfasta, outtab)
-
     # silva/gg
     else:
         otus = OrderedDict()
@@ -114,18 +122,28 @@ def run_lca(fasta,
                 otu.classification = tree.no_hits
                 continue
 
-            while lca_node.name in tree.assignment_min and \
-                    hits.percent_ids[-1] < tree.assignment_min[lca_node.name] and \
-                    lca_node is not tree.root:
+            while lca_node.name in tree.assignment_min and hits.percent_ids[
+                -1
+            ] < tree.assignment_min[
+                lca_node.name
+            ] and lca_node is not tree.root:
                 lca_node = tree.get_parent(lca_node)
             otu.classification = lca_node
         for otu_id, otu in otus.items():
             taxonomy = tree.get_taxonomy(otu.classification)
-            full_name = ("{name};"
-                         "tax={taxonomy}").format(name=otu.name.strip(";"),
-                                                  taxonomy=",".join(["%s__%s" % (abb, tax) for abb, tax in taxonomy.items()]))
+            full_name = ("{name};" "tax={taxonomy}").format(
+                name=otu.name.strip(";"),
+                taxonomy=",".join(
+                    ["%s__%s" % (abb, tax) for abb, tax in taxonomy.items()]
+                ),
+            )
             print(format_fasta_record(full_name, otu.sequence), file=outfasta)
-            print(otu_id, ";".join(["%s__%s" % (abb, tax) for abb, tax in taxonomy.items()]), sep="\t", file=outtab)
+            print(
+                otu_id,
+                ";".join(["%s__%s" % (abb, tax) for abb, tax in taxonomy.items()]),
+                sep="\t",
+                file=outtab,
+            )
 
 
 def get_snakefile():
@@ -135,152 +153,287 @@ def get_snakefile():
     return sf
 
 
-@cli.command("annotate",
-             context_settings=dict(ignore_unknown_options=True),
-             short_help="run annotation protocol")
-@click.argument("fastq-dir", type=click.Path(exists=True))
-@click.option("--prefilter-file-size",
-    default=100000,
-    type=int,
-    show_default=True,
-    help="any file smaller than this in bytes is omitted from being processed")
-@click.option(
-    "-j",
-    "--jobs",
-    default=multiprocessing.cpu_count(),
-    type=int,
-    show_default=True,
-    help=
-    "use at most this many cores in parallel; total running tasks at any given time will be jobs/threads"
-)
-@click.option("-o",
-              "--out-dir",
-              default=os.path.realpath("."),
-              show_default=True,
-              help="results output directory")
-@click.option("--no-conda",
-              is_flag=True,
-              default=False,
-              show_default=True,
-              help="do not use conda environments")
-@click.option(
-    "--dryrun",
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help=
-    "do not execute anything, just show the commands that would be executed")
-@click.option(
-    "-a",
-    "--author",
-    default=subprocess.check_output(["whoami"]).decode("utf-8").strip(),
-    show_default=True,
-    help="will show in footer of summary HTML document")
-@click.option(
-    "-t",
-    "--threads",
-    default=multiprocessing.cpu_count(),
-    type=int,
-    show_default=True,
-    help=
-    "when a step is multi-threaded, use this many threads; this all or a subset of --jobs"
+@cli.command(
+    "download",
+    context_settings=dict(ignore_unknown_options=True),
+    short_help="download reference data (Optional)",
 )
 @click.option(
     "-d",
     "--database-dir",
     default="references",
     show_default=True,
-    help=
-    "directory containing reference data or new directory into which to download reference data"
+    help="directory containing reference data or new directory into which to download reference data",
 )
-@click.option("-fa",
-              "--filter-adapters",
-              default="",
-              show_default=True,
-              help="file path to adapters FASTA to use for trimming read ends")
-@click.option("-fc",
-              "--filter-contaminants",
-              default="",
-              show_default=True,
-              help="file path to FASTA to use for filtering reads")
-@click.option("-ak",
-              "--allowable-kmer-mismatches",
-              type=int,
-              default=1,
-              show_default=True,
-              help="kmer mismatches allowed during adapter trim process")
-@click.option("-kl",
-              "--reference-kmer-match-length",
-              type=int,
-              default=27,
-              show_default=True,
-              help="length of kmer to search against contaminant sequences")
+@click.option(
+    "-j",
+    "--jobs",
+    default=multiprocessing.cpu_count(),
+    type=int,
+    show_default=True,
+    help="use at most this many cores in parallel",
+)
+@click.option(
+    "--rd",
+    "--reference-database",
+    default="silva",
+    type=click.Choice(["silva", "greengenes", "unite"]),
+    show_default=True,
+    help="two 16S databases are supported along with Unite for ITS; only the reference specified will be downloaded",
+)
+@click.option(
+    "--dryrun",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="do not execute anything, just show the commands that would be executed",
+)
+@click.argument("snakemake_args", nargs=-1, type=click.UNPROCESSED)
+def run_download(database_dir, jobs, reference_database, dryrun, snakemake_args):
+    """
+    Download the reference databases, but do not execute any of the 16S or ITS
+    annotation protocol. Running this prior to `hundo annotate` is not
+    required, but may be useful in instances where compute nodes do not have
+    internet access.
+    """
+    database_dir = os.path.realpath(database_dir)
+    targets = []
+    if reference_database == "greengenes":
+        targets = " ".join(
+            [
+                os.path.join(database_dir, i)
+                for i in [
+                    "greengenes.fasta.nhr",
+                    "greengenes.fasta.nin",
+                    "greengenes.fasta.nsq",
+                    "greengenes.map",
+                    "greengenes.tre",
+                ]
+            ]
+        )
+    elif reference_database == "silva":
+        targets = " ".join(
+            [
+                os.path.join(database_dir, i)
+                for i in [
+                    "silvamod128.fasta.nhr",
+                    "silvamod128.fasta.nin",
+                    "silvamod128.fasta.nsq",
+                    "silvamod128.map",
+                    "silvamod128.tre",
+                ]
+            ]
+        )
+    else:
+        targets = " ".join(
+            [
+                os.path.join(database_dir, i)
+                for i in [
+                    "unite.fasta.nhr",
+                    "unite.fasta.nin",
+                    "unite.fasta.nsq",
+                    "unite.map",
+                    "unite.tre",
+                ]
+            ]
+        )
+    cmd = (
+        "snakemake --snakefile {snakefile} --printshellcmds "
+        "--jobs {jobs} --rerun-incomplete "
+        "--nolock {dryrun} "
+        "--config database_dir={database_dir} workflow=download "
+        "reference_database={reference_database} "
+        "{add_args} {args} {targets}"
+    ).format(
+        snakefile=get_snakefile(),
+        jobs=jobs,
+        dryrun="--dryrun" if dryrun else "",
+        database_dir=database_dir,
+        reference_database=reference_database,
+        add_args="" if snakemake_args and snakemake_args[0].startswith("-") else "--",
+        args=" ".join(snakemake_args),
+        targets=targets,
+    )
+    logging.info("Executing: " + cmd)
+    try:
+        subprocess.check_call(cmd, shell=True)
+    except subprocess.CalledProcessError as e:
+        # removes the traceback
+        logging.critical(e)
+
+
+@cli.command(
+    "annotate",
+    context_settings=dict(ignore_unknown_options=True),
+    short_help="run annotation protocol",
+)
+@click.argument("fastq-dir")
+@click.option(
+    "--prefilter-file-size",
+    default=100000,
+    type=int,
+    show_default=True,
+    help="any file smaller than this in bytes is omitted from being processed",
+)
+@click.option(
+    "-j",
+    "--jobs",
+    default=multiprocessing.cpu_count(),
+    type=int,
+    show_default=True,
+    help="use at most this many cores in parallel; total running tasks at any given time will be jobs/threads",
+)
+@click.option(
+    "-o",
+    "--out-dir",
+    default=os.path.realpath("."),
+    show_default=True,
+    help="results output directory",
+)
+@click.option(
+    "--no-conda",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="do not use conda environments",
+)
+@click.option(
+    "--dryrun",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="do not execute anything, just show the commands that would be executed",
+)
+@click.option(
+    "-a",
+    "--author",
+    default=subprocess.check_output(["whoami"]).decode("utf-8").strip(),
+    show_default=True,
+    help="will show in footer of summary HTML document",
+)
+@click.option(
+    "-t",
+    "--threads",
+    default=multiprocessing.cpu_count(),
+    type=int,
+    show_default=True,
+    help="when a step is multi-threaded, use this many threads; this all or a subset of --jobs",
+)
+@click.option(
+    "-d",
+    "--database-dir",
+    default="references",
+    show_default=True,
+    help="directory containing reference data or new directory into which to download reference data",
+)
+@click.option(
+    "-fa",
+    "--filter-adapters",
+    default="",
+    show_default=True,
+    help="file path to adapters FASTA to use for trimming read ends",
+)
+@click.option(
+    "-fc",
+    "--filter-contaminants",
+    default="",
+    show_default=True,
+    help="file path to FASTA to use for filtering reads",
+)
+@click.option(
+    "-ak",
+    "--allowable-kmer-mismatches",
+    type=int,
+    default=1,
+    show_default=True,
+    help="kmer mismatches allowed during adapter trim process",
+)
+@click.option(
+    "-kl",
+    "--reference-kmer-match-length",
+    type=int,
+    default=27,
+    show_default=True,
+    help="length of kmer to search against contaminant sequences",
+)
 @click.option(
     "-km",
     "--reduced-kmer-min",
     type=int,
     default=8,
     show_default=True,
-    help="look for shorter kmers at read tips down to this length; 0 disables")
-@click.option("-rl",
-              "--minimum-passing-read-length",
-              type=int,
-              default=100,
-              show_default=True,
-              help="passing single-end read length prior to merging")
-@click.option("-bq",
-              "--minimum-base-quality",
-              type=int,
-              default=10,
-              show_default=True,
-              help="regions with average quality below this will be trimmed")
-@click.option("-ml",
-              "--minimum-merge-length",
-              type=int,
-              default=150,
-              show_default=True,
-              help="minimum allowable read length after merging")
-@click.option("-am",
-              "--allow-merge-stagger",
-              is_flag=True,
-              default=False,
-              show_default=True,
-              help="allow merging of staggered reads")
-@click.option("-md",
-              "--max-diffs",
-              type=int,
-              default=5,
-              show_default=True,
-              help="maximum number of different bases in overlap")
-@click.option("-mo",
-              "--min-overlap",
-              type=int,
-              default=16,
-              show_default=True,
-              help="minimum length of overlap between reads")
+    help="look for shorter kmers at read tips down to this length; 0 disables",
+)
+@click.option(
+    "-rl",
+    "--minimum-passing-read-length",
+    type=int,
+    default=100,
+    show_default=True,
+    help="passing single-end read length prior to merging",
+)
+@click.option(
+    "-bq",
+    "--minimum-base-quality",
+    type=int,
+    default=10,
+    show_default=True,
+    help="regions with average quality below this will be trimmed",
+)
+@click.option(
+    "-ml",
+    "--minimum-merge-length",
+    type=int,
+    default=150,
+    show_default=True,
+    help="minimum allowable read length after merging",
+)
+@click.option(
+    "-am",
+    "--allow-merge-stagger",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="allow merging of staggered reads",
+)
+@click.option(
+    "-md",
+    "--max-diffs",
+    type=int,
+    default=5,
+    show_default=True,
+    help="maximum number of different bases in overlap",
+)
+@click.option(
+    "-mo",
+    "--min-overlap",
+    type=int,
+    default=16,
+    show_default=True,
+    help="minimum length of overlap between reads",
+)
 @click.option(
     "-ee",
     "--maximum-expected-error",
     type=float,
     default=1,
     show_default=True,
-    help=
-    "after merging; the allowable limit of erroneous bases; accepts fractions as well"
+    help="after merging; the allowable limit of erroneous bases; accepts fractions as well",
 )
 @click.option(
     "-cf",
     "--reference-chimera-filter",
     default=True,
     show_default=True,
-    help="define a file path or set to true to use BLAST reference database")
+    help="define a file path or set to true to use BLAST reference database",
+)
 @click.option(
     "-sa",
     "--minimum-sequence-abundance",
     default=2,
     type=int,
     show_default=True,
-    help=
-    "when clustering, don't create any clusters with fewer than this many representative sequences"
+    help="when clustering, don't create any clusters with fewer than this many representative sequences",
 )
 @click.option(
     "-pd",
@@ -288,8 +441,7 @@ def get_snakefile():
     default=3,
     type=float,
     show_default=True,
-    help=
-    "maximum difference between an OTU member sequence and the representative sequence of that OTU"
+    help="maximum difference between an OTU member sequence and the representative sequence of that OTU",
 )
 @click.option(
     "-rd",
@@ -297,23 +449,23 @@ def get_snakefile():
     default="silva",
     type=click.Choice(["silva", "greengenes", "unite"]),
     show_default=True,
-    help=
-    "two 16S databases are supported along with Unite for ITS; references will be downloaded as needed"
+    help="two 16S databases are supported along with Unite for ITS; references will be downloaded as needed",
 )
-@click.option("-mb",
-              "--blast-minimum-bitscore",
-              default=125,
-              type=int,
-              show_default=True,
-              help="filter out alignments below this bitscore threshold")
+@click.option(
+    "-mb",
+    "--blast-minimum-bitscore",
+    default=125,
+    type=int,
+    show_default=True,
+    help="filter out alignments below this bitscore threshold",
+)
 @click.option(
     "-tf",
     "--blast-top-fraction",
     default=0.95,
     type=float,
     show_default=True,
-    help=
-    "when calculating LCA, only use this fraction of HSPs from the best scoring alignment"
+    help="when calculating LCA, only use this fraction of HSPs from the best scoring alignment",
 )
 @click.option(
     "-ir",
@@ -321,20 +473,40 @@ def get_snakefile():
     default=0.97,
     type=float,
     show_default=True,
-    help=
-    "reflects the difference between OTU clusters to reduce ambiguous assignment"
+    help="reflects the difference between OTU clusters to reduce ambiguous assignment",
 )
 @click.argument("snakemake_args", nargs=-1, type=click.UNPROCESSED)
 def run_annotate(
-        fastq_dir, prefilter_file_size, jobs, out_dir, no_conda, dryrun,
-        author, threads, database_dir, filter_adapters, filter_contaminants,
-        allowable_kmer_mismatches, reference_kmer_match_length,
-        reduced_kmer_min, minimum_passing_read_length, minimum_base_quality,
-        minimum_merge_length, allow_merge_stagger, max_diffs, min_overlap,
-        maximum_expected_error, reference_chimera_filter,
-        minimum_sequence_abundance, percent_of_allowable_difference,
-        reference_database, blast_minimum_bitscore, blast_top_fraction,
-        read_identity_requirement, snakemake_args):
+    fastq_dir,
+    prefilter_file_size,
+    jobs,
+    out_dir,
+    no_conda,
+    dryrun,
+    author,
+    threads,
+    database_dir,
+    filter_adapters,
+    filter_contaminants,
+    allowable_kmer_mismatches,
+    reference_kmer_match_length,
+    reduced_kmer_min,
+    minimum_passing_read_length,
+    minimum_base_quality,
+    minimum_merge_length,
+    allow_merge_stagger,
+    max_diffs,
+    min_overlap,
+    maximum_expected_error,
+    reference_chimera_filter,
+    minimum_sequence_abundance,
+    percent_of_allowable_difference,
+    reference_database,
+    blast_minimum_bitscore,
+    blast_top_fraction,
+    read_identity_requirement,
+    snakemake_args,
+):
     """
     Run annotation across paired-end sequence data contained in a directory.
     Both R1 and R2 are expected to be present in the same directory and have
@@ -351,77 +523,76 @@ def run_annotate(
         https://hundo.rtfd.io
     """
     database_dir = os.path.realpath(database_dir)
-    filter_adapters = os.path.realpath(
-        filter_adapters) if filter_adapters else ""
+    filter_adapters = os.path.realpath(filter_adapters) if filter_adapters else ""
     filter_contaminants = os.path.realpath(
-        filter_contaminants) if filter_contaminants else ""
-
+        filter_contaminants
+    ) if filter_contaminants else ""
     no_temp_declared = False
     for sa in snakemake_args:
         if sa == "--nt" or sa == "--notemp":
             no_temp_declared = True
-
-    cmd = ("snakemake --snakefile {snakefile} --directory {out_dir} "
-           "--printshellcmds --jobs {jobs} --rerun-incomplete "
-           "--nolock {conda} {dryrun} "
-           "--config fastq_dir={fq_dir} author='{author}' threads={threads} "
-           "database_dir={database_dir} filter_adapters={filter_adapters} "
-           "filter_contaminants={filter_contaminants} "
-           "allowable_kmer_mismatches={allowable_kmer_mismatches} "
-           "reference_kmer_match_length={reference_kmer_match_length} "
-           "reduced_kmer_min={reduced_kmer_min} "
-           "minimum_passing_read_length={minimum_passing_read_length} "
-           "minimum_base_quality={minimum_base_quality} "
-           "minimum_merge_length={minimum_merge_length} "
-           "fastq_allowmergestagger={allow_merge_stagger} "
-           "fastq_maxdiffs={max_diffs} "
-           "fastq_minovlen={min_overlap} "
-           "maximum_expected_error={maximum_expected_error} "
-           "reference_chimera_filter={reference_chimera_filter} "
-           "minimum_sequence_abundance={minimum_sequence_abundance} "
-           "percent_of_allowable_difference={percent_of_allowable_difference} "
-           "reference_database={reference_database} "
-           "blast_minimum_bitscore={blast_minimum_bitscore} "
-           "blast_top_fraction={blast_top_fraction} "
-           "read_identity_requirement={read_identity_requirement} "
-           "prefilter_file_size={prefilter_file_size} "
-           "no_temp_declared={no_temp_declared} {add_args} "
-           "{args}").format(
-               snakefile=get_snakefile(),
-               out_dir=os.path.realpath(out_dir),
-               jobs=jobs,
-               conda="" if no_conda else "--use-conda",
-               dryrun="--dryrun" if dryrun else "",
-               fq_dir=os.path.realpath(fastq_dir),
-               author=author,
-               threads=threads,
-               database_dir=database_dir,
-               filter_adapters=filter_adapters,
-               filter_contaminants=filter_contaminants,
-               allowable_kmer_mismatches=allowable_kmer_mismatches,
-               reference_kmer_match_length=reference_kmer_match_length,
-               reduced_kmer_min=reduced_kmer_min,
-               minimum_passing_read_length=minimum_passing_read_length,
-               minimum_base_quality=minimum_base_quality,
-               minimum_merge_length=minimum_merge_length,
-               allow_merge_stagger=allow_merge_stagger,
-               max_diffs=max_diffs,
-               min_overlap=min_overlap,
-               maximum_expected_error=maximum_expected_error,
-               reference_chimera_filter=reference_chimera_filter,
-               minimum_sequence_abundance=minimum_sequence_abundance,
-               percent_of_allowable_difference=percent_of_allowable_difference,
-               reference_database=reference_database,
-               blast_minimum_bitscore=blast_minimum_bitscore,
-               blast_top_fraction=blast_top_fraction,
-               read_identity_requirement=read_identity_requirement,
-               prefilter_file_size=prefilter_file_size,
-               no_temp_declared=no_temp_declared,
-               add_args="" if snakemake_args and snakemake_args[
-                   0].startswith("-") else "--",
-               args=" ".join(snakemake_args))
+    cmd = (
+        "snakemake --snakefile {snakefile} --directory {out_dir} "
+        "--printshellcmds --jobs {jobs} --rerun-incomplete "
+        "--nolock {conda} {dryrun} "
+        "--config fastq_dir={fq_dir} author='{author}' threads={threads} "
+        "database_dir={database_dir} filter_adapters={filter_adapters} "
+        "filter_contaminants={filter_contaminants} "
+        "allowable_kmer_mismatches={allowable_kmer_mismatches} "
+        "reference_kmer_match_length={reference_kmer_match_length} "
+        "reduced_kmer_min={reduced_kmer_min} "
+        "minimum_passing_read_length={minimum_passing_read_length} "
+        "minimum_base_quality={minimum_base_quality} "
+        "minimum_merge_length={minimum_merge_length} "
+        "fastq_allowmergestagger={allow_merge_stagger} "
+        "fastq_maxdiffs={max_diffs} "
+        "fastq_minovlen={min_overlap} "
+        "maximum_expected_error={maximum_expected_error} "
+        "reference_chimera_filter={reference_chimera_filter} "
+        "minimum_sequence_abundance={minimum_sequence_abundance} "
+        "percent_of_allowable_difference={percent_of_allowable_difference} "
+        "reference_database={reference_database} "
+        "blast_minimum_bitscore={blast_minimum_bitscore} "
+        "blast_top_fraction={blast_top_fraction} "
+        "read_identity_requirement={read_identity_requirement} "
+        "prefilter_file_size={prefilter_file_size} "
+        "no_temp_declared={no_temp_declared} {add_args} "
+        "{args}"
+    ).format(
+        snakefile=get_snakefile(),
+        out_dir=os.path.realpath(out_dir),
+        jobs=jobs,
+        conda="" if no_conda else "--use-conda",
+        dryrun="--dryrun" if dryrun else "",
+        fq_dir=os.path.realpath(fastq_dir),
+        author=author,
+        threads=threads,
+        database_dir=database_dir,
+        filter_adapters=filter_adapters,
+        filter_contaminants=filter_contaminants,
+        allowable_kmer_mismatches=allowable_kmer_mismatches,
+        reference_kmer_match_length=reference_kmer_match_length,
+        reduced_kmer_min=reduced_kmer_min,
+        minimum_passing_read_length=minimum_passing_read_length,
+        minimum_base_quality=minimum_base_quality,
+        minimum_merge_length=minimum_merge_length,
+        allow_merge_stagger=allow_merge_stagger,
+        max_diffs=max_diffs,
+        min_overlap=min_overlap,
+        maximum_expected_error=maximum_expected_error,
+        reference_chimera_filter=reference_chimera_filter,
+        minimum_sequence_abundance=minimum_sequence_abundance,
+        percent_of_allowable_difference=percent_of_allowable_difference,
+        reference_database=reference_database,
+        blast_minimum_bitscore=blast_minimum_bitscore,
+        blast_top_fraction=blast_top_fraction,
+        read_identity_requirement=read_identity_requirement,
+        prefilter_file_size=prefilter_file_size,
+        no_temp_declared=no_temp_declared,
+        add_args="" if snakemake_args and snakemake_args[0].startswith("-") else "--",
+        args=" ".join(snakemake_args),
+    )
     logging.info("Executing: " + cmd)
-
     try:
         subprocess.check_call(cmd, shell=True)
     except subprocess.CalledProcessError as e:
