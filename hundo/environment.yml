@@ -13,5 +13,6 @@ dependencies:
     - clustalo=1.2.3
     - fasttree=2.1.10
     - numpy
+    - pigz=2.3.4
     - pyyaml
     - vsearch=2.6.0

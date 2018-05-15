@@ -666,12 +666,25 @@ rule newick_tree:
         """
 
 
+rule compress_file:
+    input:
+        "{file}"
+    output:
+        "{file}.gz"
+    threads:
+        config.get("threads", 1)
+    conda:
+        CONDAENV
+    shell:
+        "pigz --processes {threads} {input}"
+
+
 rule report:
     input:
-        file1 = "OTU.biom",
-        file2 = "OTU.fasta",
-        file3 = "OTU.tree",
-        file4 = "OTU.txt",
+        file1 = "OTU.biom.gz",
+        file2 = "OTU.fasta.gz",
+        file3 = "OTU.tree.gz",
+        file4 = "OTU.txt.gz",
         fastq_stats_pre = expand("logs/{sample}_merged_eestats.txt", sample=SAMPLES.keys()),
         fastq_stats_post = expand("logs/{sample}_merged_filtered_eestats.txt", sample=SAMPLES.keys()),
         raw_r1_quals = expand("logs/{sample}_R1_eestats.txt", sample=SAMPLES.keys()),
@@ -705,6 +718,7 @@ rule report:
         html = "summary.html"
     run:
         import csv
+        import gzip
         from biom import parse_table
         from biom.util import compute_counts_per_sample_stats
         from collections import Counter, defaultdict
@@ -717,7 +731,7 @@ rule report:
         biom_libraries = ""
         biom_observations = ""
 
-        with open(input.file1) as fh, \
+        with gzip.open(input.file1, "rt") as fh, \
             open(summary_csv, 'w') as sumout, \
             open(samples_csv, 'w') as samout:
 
@@ -786,7 +800,7 @@ rule report:
                 level_dict[level] = taxonomy.partition("%s__" % level)[-1].partition(",")[0]
             return level_dict
 
-        with open(input.file4) as fh:
+        with gzip.open(input.file4, "rt") as fh:
             reader = csv.DictReader(fh, delimiter="\t")
             samples_counter = defaultdict(lambda: defaultdict(Counter))
             tax_level_quantities = defaultdict(Counter)
