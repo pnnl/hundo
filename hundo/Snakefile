@@ -17,21 +17,50 @@ def get_conda_env():
     return yml
 
 
-def get_sample_files(config):
-    fastq_dir = config.get("fastq_dir")
+def _make_gen(reader):
+    """https://stackoverflow.com/a/27518377"""
+    b = reader(1024 * 1024)
+    while b:
+        yield b
+        b = reader(1024 * 1024)
+
+
+def count_sequences(filename):
+    """https://stackoverflow.com/a/27518377"""
+    if filename.endswith(".gz"):
+        import gzip
+        f = gzip.open(filename, "rb")
+    else:
+        f = open(filename, "rb")
+    f_gen = _make_gen(f.raw.read)
+    return sum(buf.count(b'\n') for buf in f_gen) / 4
+
+
+def get_sample_files(fastq_dir, prefilter_file_size):
     if not fastq_dir:
-        logger.error("'fastq_dir' has not been set -- this directory should contain your input FASTQs")
+        logger.error(("'fastq_dir' has not been set -- this directory "
+            "should contain your input FASTQs"))
+        sys.exit(1)
+    if os.path.isfile(fastq_dir):
+        logger.error(("'fastq_dir' must be a directory or a file pattern, "
+            "e.g. '*.fastq', with single quotes surrounding the pattern."))
         sys.exit(1)
 
-    logger.info("Finding samples in %s" % fastq_dir)
+    if "*" in fastq_dir:
+        from glob import glob
+        logger.info("Finding samples matching %s" % fastq_dir)
+        raw_fastq_files = glob(fastq_dir)
+    else:
+        logger.info("Finding samples in %s" % fastq_dir)
+        raw_fastq_files = [os.path.join(fastq_dir, i) for i in os.listdir(fastq_dir)]
 
     samples = dict()
     seen = set()
-    for fname in os.listdir(fastq_dir):
+    for fq_path in raw_fastq_files:
+        fname = os.path.basename(fq_path)
+        fastq_dir = os.path.dirname(fq_path)
         if not ".fastq" in fname and not ".fq" in fname:
             continue
-        fq_path = os.path.join(fastq_dir, fname)
-
         sample_id = fname.partition(".fastq")[0]
         if ".fq" in sample_id:
             sample_id = fname.partition(".fq")[0]
@@ -79,9 +108,11 @@ def get_sample_files(config):
         seen.add(other_idx)
         seen.add(sample_id)
 
-        if os.path.getsize(fq_path) < config.get("prefilter_file_size", 100000) or \
-           os.path.getsize(other_idx) < config.get("prefilter_file_size", 100000):
-            logger.info("%s is being omitted from analysis due to its file size." % sample_id)
+        if os.path.getsize(fq_path) < prefilter_file_size \
+            or os.path.getsize(other_idx) < prefilter_file_size:
+            c = count_sequences(fq_path)
+            logger.info(("%s is being omitted from analysis due to its "
+                "file size (%d paired sequences).") % (sample_id, c))
             fastq_paths = None
         else:
             if idx == "r1":
@@ -92,7 +123,7 @@ def get_sample_files(config):
         if fastq_paths:
             samples[sample_id] = fastq_paths
 
-    logger.info("Found %d samples for processing:\n" % len(samples))
+    logger.info("\nFound %d samples for processing:\n" % len(samples))
     samples_str = ""
     for k, v in samples.items():
         samples_str += "%s: %s; %s\n" % (k, v["r1"], v["r2"])
@@ -166,7 +197,10 @@ def md5(fname):
 
 
 PROTOCOL_VERSION = subprocess.check_output("hundo --version", shell=True).decode("utf-8").strip()
-SAMPLES = get_sample_files(config)
+if config.get("workflow") == "download":
+    SAMPLES = {"placeholder":{"r1": "placeholder", "r2": "placeholder"}}
+else:
+    SAMPLES = get_sample_files(config.get("fastq_dir"), config.get("prefilter_file_size", 100000))
 CONDAENV = get_conda_env()
 REFERENCES = {"greengenes.fasta.nhr": "200f1b4356e59be524525e4ca83cefc1",
               "greengenes.fasta.nin": "f41470ebc95c21f13b54f7b127ebe2ad",
@@ -1947,6 +1981,6 @@ rule report:
 
 
 onsuccess:
-    if not config["no_temp_declared"]:
+    if not config.get("no_temp_declared"):
         shutil.rmtree("tmp", ignore_errors=True)
     print("Protocol [%s] completed successfully." % PROTOCOL_VERSION)
