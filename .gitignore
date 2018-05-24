@@ -1,4 +1,6 @@
 example/annotation_references
+example/mothur_sop_results
+example/example_its_results
 .snakemake
 
 # Byte-compiled / optimized / DLL files
@@ -92,4 +94,3 @@ ENV/
 
 # Rope project settings
 .ropeproject
-
