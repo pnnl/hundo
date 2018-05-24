@@ -66,7 +66,7 @@ def run_lca(
     """Classifies BLAST HSPs using associated newick tree with corresponding
     names and map.
     """
-
+    import statistics
     import hundo.unite_classifier as unite_lca
     import hundo.crest_classifier as crest_lca
     from hundo.blast import parse_blasthits
@@ -101,7 +101,8 @@ def run_lca(
                     # need to translate fasta names of blast hits to
                     # species names of the taxonomy map
                     translated_hits = [namemap[i] for i in hits.names]
-                    taxonomy = tree.lca(translated_hits, hits.percent_ids[-1])
+                    # only slightly more stringent
+                    taxonomy = tree.lca(translated_hits, statistics.mean(hits.percent_ids))
                     print_unite(name, seq, taxonomy, outfasta, outtab)
                 else:
                     # unknown

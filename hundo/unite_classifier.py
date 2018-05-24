@@ -1,5 +1,18 @@
-from Bio import Phylo
+import functools
 from itertools import zip_longest
+
+from Bio import Phylo
+
+
+def memoize(func):
+    cache = func.cache = {}
+    @functools.wraps(func)
+    def memoized_func(*args, **kwargs):
+        key = str(args) + str(kwargs)
+        if key not in cache:
+            cache[key] = func(*args, **kwargs)
+        return cache[key]
+    return memoized_func
 
 
 class Tree(object):
@@ -9,6 +22,20 @@ class Tree(object):
                                "newick",
                                values_are_confidence=True,
                                rooted=True)
+
+    @memoize
+    def find_clades(self, tx):
+        """
+        Save clades for all observed species assignments to speed up
+        annotations.
+        """
+        return [i for i in self.tree.find_clades(tx)][0]
+
+    @memoize
+    def get_path(self, clade):
+        cpath = self.tree.get_path(clade)
+        cpath.insert(0, self.tree.root)
+        return cpath
 
     def get_clade(self, tx, percent_id):
         if not tx:
@@ -29,9 +56,8 @@ class Tree(object):
         else:
             cutoff = "s"
 
-        c = [i for i in self.tree.find_clades(tx)][0]
-        cpath = self.tree.get_path(c)
-        cpath.insert(0, self.tree.root)
+        c = self.find_clades(tx)
+        cpath = self.get_path(c)
         for clade in cpath:
             if clade.name.startswith(cutoff):
                 # cutoff due to alignment percentage
@@ -53,11 +79,10 @@ class Tree(object):
     def lca(self, tx, percent_id):
         if isinstance(tx, str):
             tx = [tx]
-        c = [self.get_clade(i, percent_id) for i in tx]
+        c = set([self.get_clade(i, percent_id) for i in tx])
         c = self.tree.common_ancestor(c)
         if c == self.tree.root:
             return self.tax_str([self.tree.root.name])
         else:
-            l = self.tree.get_path(c)
-            l.insert(0, self.tree.root)
+            l = self.get_path(c)
             return self.tax_str([c.name for c in l])

@@ -4,15 +4,16 @@ channels:
     - conda-forge
     - defaults
 dependencies:
-    - python=3.5
+    - python=3.6
     - bbmap=37.17
-    - biom-format=2.1.5
+    - biom-format=2.1.6
     - biopython
     - blast=2.6.0
     - bzip2=1.0.6
-    - clustalo=1.2.3
+    - mafft=7.313
     - fasttree=2.1.10
-    - numpy
+    - numpy>=1.14.0
+    - pandas>=0.22.0
     - pigz=2.3.4
-    - pyyaml
+    - pyyaml>=3.12
     - vsearch=2.6.0

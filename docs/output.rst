@@ -24,7 +24,7 @@ and taxonomy assignment in the final column as a comma delimited list.
 
 **OTU\_aligned.fasta**
 
-OTU sequences after alignment using Clustal Omega.
+OTU sequences after alignment using MAFFT.
 
 **all-sequences.fasta**
 

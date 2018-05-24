@@ -11,7 +11,8 @@ set up your channels (steps 1 and 2). Then:
 
 ::
 
-    conda install python=3.6 pyyaml snakemake biopython biom-format=2.1.5
+    conda install python=3.6 \
+        pyyaml snakemake biopython biom-format=2.1.6 numpy pandas
     pip install hundo
 
 To update to the newest version of Hundo, run
@@ -19,4 +20,15 @@ To update to the newest version of Hundo, run
 ::
 
     pip install hundo --upgrade
-    
+
+Alternatively, if you do not want any new executables in your environment
+you can install into a new conda environment, e.g. hundo_env::
+
+    conda create --name hundo_env python=3.6 pyyaml snakemake \
+        biom-format=2.1.6 numpy pandas
+    source activate hundo_env
+    pip install hundo
+
+To leave the environment::
+
+    source deactivate

@@ -1,8 +1,9 @@
 import hashlib
 import os
-import subprocess
 import shutil
+import subprocess
 import sys
+
 from snakemake.logging import logger
 from snakemake.utils import report
 
@@ -11,7 +12,9 @@ def get_conda_env():
     if config.get("environment"):
         yml = config.get("environment")
     else:
-        yml = os.path.join(os.path.dirname(os.path.abspath(workflow.snakefile)), "environment.yml")
+        yml = os.path.join(
+            os.path.dirname(os.path.abspath(workflow.snakefile)), "environment.yml"
+        )
     if not os.path.exists(yml):
         sys.exit("Unable to locate the environmental definitions file; tried %s" % yml)
     return yml
@@ -22,6 +25,7 @@ def _make_gen(reader):
     b = reader(1024 * 1024)
     while b:
         yield b
+
         b = reader(1024 * 1024)
 
 
@@ -29,6 +33,7 @@ def count_sequences(filename):
     """https://stackoverflow.com/a/27518377"""
     if filename.endswith(".gz"):
         import gzip
+
         f = gzip.open(filename, "rb")
     else:
         f = open(filename, "rb")
@@ -38,22 +43,29 @@ def count_sequences(filename):
 
 def get_sample_files(fastq_dir, prefilter_file_size):
     if not fastq_dir:
-        logger.error(("'fastq_dir' has not been set -- this directory "
-            "should contain your input FASTQs"))
+        logger.error(
+            (
+                "'fastq_dir' has not been set -- this directory "
+                "should contain your input FASTQs"
+            )
+        )
         sys.exit(1)
     if os.path.isfile(fastq_dir):
-        logger.error(("'fastq_dir' must be a directory or a file pattern, "
-            "e.g. '*.fastq', with single quotes surrounding the pattern."))
+        logger.error(
+            (
+                "'fastq_dir' must be a directory or a file pattern, "
+                "e.g. '*.fastq', with single quotes surrounding the pattern."
+            )
+        )
         sys.exit(1)
-
     if "*" in fastq_dir:
         from glob import glob
+
         logger.info("Finding samples matching %s" % fastq_dir)
         raw_fastq_files = glob(fastq_dir)
     else:
         logger.info("Finding samples in %s" % fastq_dir)
         raw_fastq_files = [os.path.join(fastq_dir, i) for i in os.listdir(fastq_dir)]
-
     samples = dict()
     seen = set()
     for fq_path in raw_fastq_files:
@@ -61,12 +73,16 @@ def get_sample_files(fastq_dir, prefilter_file_size):
         fastq_dir = os.path.dirname(fq_path)
         if not ".fastq" in fname and not ".fq" in fname:
             continue
+
         sample_id = fname.partition(".fastq")[0]
         if ".fq" in sample_id:
             sample_id = fname.partition(".fq")[0]
-        sample_id = sample_id.replace("_R1", "").replace("_r1", "").replace("_R2", "").replace("_r2", "")
+        sample_id = sample_id.replace("_R1", "").replace("_r1", "").replace(
+            "_R2", ""
+        ).replace(
+            "_r2", ""
+        )
         sample_id = sample_id.replace(".", "_").replace(" ", "_").replace("-", "_")
-
         # sample ID after rename
         if sample_id in seen:
             # but FASTQ has yet to be added
@@ -74,7 +90,10 @@ def get_sample_files(fastq_dir, prefilter_file_size):
             # is a case where we should warn the user that this file
             # is being skipped
             if not fq_path in seen:
-                logger.warning("Duplicate sample %s was found after renaming; skipping..." % sample_id)
+                logger.warning(
+                    "Duplicate sample %s was found after renaming; skipping..." %
+                    sample_id
+                )
             continue
 
         # which read index do we have of the pair?
@@ -92,37 +111,43 @@ def get_sample_files(fastq_dir, prefilter_file_size):
             else:
                 other_idx = os.path.join(fastq_dir, "_r1".join(fname.rsplit("_r2", 1)))
         else:
-            logger.error("Unable to determine read index for [%s] as it is missing '_R1' or '_R2' designation. Exiting." % fname)
+            logger.error(
+                "Unable to determine read index for [%s] as it is missing '_R1' or '_R2' designation. Exiting." %
+                fname
+            )
             sys.exit(1)
-
         # naming convention not followed and nothing was renamed
         if other_idx == fq_path:
             logger.error("Unable to locate matching index for %s. Exiting." % fq_path)
             sys.exit(1)
         # not paired-end?
         if not os.path.exists(other_idx):
-            logger.error("File [%s] for %s was not found. Exiting." % (other_idx, sample_id))
+            logger.error(
+                "File [%s] for %s was not found. Exiting." % (other_idx, sample_id)
+            )
             sys.exit(1)
-
         seen.add(fq_path)
         seen.add(other_idx)
         seen.add(sample_id)
-
-        if os.path.getsize(fq_path) < prefilter_file_size \
-            or os.path.getsize(other_idx) < prefilter_file_size:
+        if os.path.getsize(fq_path) < prefilter_file_size or os.path.getsize(
+            other_idx
+        ) < prefilter_file_size:
             c = count_sequences(fq_path)
-            logger.info(("%s is being omitted from analysis due to its "
-                "file size (%d paired sequences).") % (sample_id, c))
+            logger.info(
+                (
+                    "%s is being omitted from analysis due to its "
+                    "file size (%d paired sequences)."
+                ) %
+                (sample_id, c)
+            )
             fastq_paths = None
         else:
             if idx == "r1":
                 fastq_paths = {"r1": fq_path, "r2": other_idx}
             else:
                 fastq_paths = {"r1": other_idx, "r2": fq_path}
-
         if fastq_paths:
             samples[sample_id] = fastq_paths
-
     logger.info("\nFound %d samples for processing:\n" % len(samples))
     samples_str = ""
     for k, v in samples.items():
@@ -132,7 +157,9 @@ def get_sample_files(fastq_dir, prefilter_file_size):
 
 
 def get_cluster_sequences_input(wildcards):
-    return "chimera-filtered_denovo.fasta" if config.get("denova_chimera_filter") else "dereplicated-sequences.fasta"
+    return "chimera-filtered_denovo.fasta" if config.get(
+        "denova_chimera_filter"
+    ) else "dereplicated-sequences.fasta"
 
 
 def get_run_reference_chimera_filter_inputs(wildcards):
@@ -152,25 +179,25 @@ def get_run_reference_chimera_filter_inputs(wildcards):
 def filter_fastas(fasta1, uclust, fasta2, output):
     """fasta1 is the larger set of reads to be filtered
     by read IDs in uclust and fasta2"""
-
     accepted_reads = set()
-
     with open(fasta2) as fh:
         for line in fh:
             if line.startswith(">"):
                 name = line.strip().strip(">").partition(";")[0]
                 accepted_reads.add(name)
-
     with open(uclust) as fh:
         for line in fh:
             toks = line.strip().split("\t")
-            if toks[9] == "*": continue
-            if toks[8] == "*": continue
+            if toks[9] == "*":
+                continue
+
+            if toks[8] == "*":
+                continue
+
             a = toks[8].partition(";")[0]
             b = toks[9].partition(";")[0]
             if b in accepted_reads:
                 accepted_reads.add(a)
-
     with open(fasta1) as fh, open(output, "w") as fo:
         keep = False
         for line in fh:
@@ -190,33 +217,38 @@ def md5(fname):
     hash_md5 = hashlib.md5()
     if not os.path.exists(fname):
         return None
+
     with open(fname, "rb") as f:
-        for chunk in iter(lambda: f.read(4096), b""):
+        for chunk in iter( lambda: f.read(4096), b""):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
 
 
 PROTOCOL_VERSION = subprocess.check_output("hundo --version", shell=True).decode("utf-8").strip()
 if config.get("workflow") == "download":
-    SAMPLES = {"placeholder":{"r1": "placeholder", "r2": "placeholder"}}
+    SAMPLES = {"placeholder": {"r1": "placeholder", "r2": "placeholder"}}
 else:
-    SAMPLES = get_sample_files(config.get("fastq_dir"), config.get("prefilter_file_size", 100000))
+    SAMPLES = get_sample_files(
+        config.get("fastq_dir"), config.get("prefilter_file_size", 100000)
+    )
 CONDAENV = get_conda_env()
-REFERENCES = {"greengenes.fasta.nhr": "200f1b4356e59be524525e4ca83cefc1",
-              "greengenes.fasta.nin": "f41470ebc95c21f13b54f7b127ebe2ad",
-              "greengenes.fasta.nsq": "150b00866a87f44c8b33871be7cc6b98",
-              "greengenes.map": "cb49d30e2a00476f8bdaaa3eaec693ef",
-              "greengenes.tre": "b3a369edde911bf0aa848a842f736fce",
-              "silvamod128.fasta.nhr": "99d9b6817a9c6a0249fbb32a60e725ae",
-              "silvamod128.fasta.nin": "25d8d6587123aa7dbaabaa1299e481cc",
-              "silvamod128.fasta.nsq": "7e12efc4ab9019c9d79809861922a001",
-              "silvamod128.map": "00500c7f215a89a3240c907af4f75f33",
-              "silvamod128.tre": "340864d9d32e8561f75ec0b0a9a6c3d1",
-              "unite.fasta.nhr": "3ce60ad0d3eee81246c6915e64bf3122",
-              "unite.fasta.nin": "962c9364b6cb3da2b9457546838bb6fb",
-              "unite.fasta.nsq": "796e7338cdbb3d659951e380fd2b8104",
-              "unite.map": "11984b9f45fbac120824de516a133e45",
-              "unite.tre": "d50a5f427c22964906f2d6fc1b7cf220"}
+REFERENCES = {
+    "greengenes.fasta.nhr": "200f1b4356e59be524525e4ca83cefc1",
+    "greengenes.fasta.nin": "f41470ebc95c21f13b54f7b127ebe2ad",
+    "greengenes.fasta.nsq": "150b00866a87f44c8b33871be7cc6b98",
+    "greengenes.map": "cb49d30e2a00476f8bdaaa3eaec693ef",
+    "greengenes.tre": "b3a369edde911bf0aa848a842f736fce",
+    "silvamod128.fasta.nhr": "99d9b6817a9c6a0249fbb32a60e725ae",
+    "silvamod128.fasta.nin": "25d8d6587123aa7dbaabaa1299e481cc",
+    "silvamod128.fasta.nsq": "7e12efc4ab9019c9d79809861922a001",
+    "silvamod128.map": "00500c7f215a89a3240c907af4f75f33",
+    "silvamod128.tre": "340864d9d32e8561f75ec0b0a9a6c3d1",
+    "unite.fasta.nhr": "3ce60ad0d3eee81246c6915e64bf3122",
+    "unite.fasta.nin": "962c9364b6cb3da2b9457546838bb6fb",
+    "unite.fasta.nsq": "796e7338cdbb3d659951e380fd2b8104",
+    "unite.map": "11984b9f45fbac120824de516a133e45",
+    "unite.tre": "d50a5f427c22964906f2d6fc1b7cf220",
+}
 REF = [k for k in REFERENCES.keys() if k.startswith(config.get("reference_database", "silva"))]
 BLASTREF = [os.path.join(config.get("database_dir", "."), i) for i in REF]
 REFFASTA = [os.path.join(config.get("database_dir", "."), i) for i in REF if ".fasta" in i][0].rpartition(".")[0]
@@ -226,8 +258,8 @@ REFTRE = [os.path.join(config.get("database_dir", "."), i) for i in REF if i.end
 
 rule all:
     input:
-        expand("summary.html"),
-        expand("PROTOCOL-VERSION.txt")
+        "summary.html",
+        "PROTOCOL-VERSION.txt"
 
 
 rule print_protocol_version:
@@ -270,8 +302,10 @@ rule get_raw_fastq_qualities:
     threads:
         1
     shell:
-        """vsearch --threads {threads} --fastq_eestats {input.r1} --output {output.r1}
-           vsearch --threads {threads} --fastq_eestats {input.r2} --output {output.r2}"""
+        """
+        vsearch --threads {threads} --fastq_eestats {input.r1} --output {output.r1}
+        vsearch --threads {threads} --fastq_eestats {input.r2} --output {output.r2}
+        """
 
 
 rule trim_and_filter_reads:
@@ -300,12 +334,14 @@ rule trim_and_filter_reads:
     threads:
         max(int(config.get("threads", 4) * 0.25), 1)
     shell:
-        """bbduk2.sh in={input.r1} in2={input.r2} out={output.r1} \
-               out2={output.r2} {params.rref} {params.lref} {params.fref} \
-               {params.mink} qout=33 stats={output.stats} {params.hdist} \
-               {params.k} trimq={params.trimq} qtrim={params.qtrim}
-               threads={threads} minlength={params.minlength} \
-               overwrite=true 2> {log}"""
+        """
+        bbduk2.sh in={input.r1} in2={input.r2} out={output.r1} \
+            out2={output.r2} {params.rref} {params.lref} {params.fref} \
+            {params.mink} qout=33 stats={output.stats} {params.hdist} \
+            {params.k} trimq={params.trimq} qtrim={params.qtrim}
+            threads={threads} minlength={params.minlength} \
+            overwrite=true 2> {log}
+        """
 
 
 rule count_raw_reads:
@@ -347,13 +383,15 @@ rule merge_reads:
     log:
         "logs/{sample}_merge_reads.log"
     shell:
-        """vsearch --fastq_mergepairs {input.r1} --reverse {input.r2} \
-               --label_suffix \;sample={wildcards.sample}\; \
-               --fastq_minmergelen {params.minimum_merge_length} \
-               {params.fastq_allowmergestagger} \
-               --fastq_maxdiffs {params.fastq_maxdiffs} \
-               --fastq_minovlen {params.fastq_minovlen} \
-               --fastqout {output} --log {log}"""
+        """
+        vsearch --fastq_mergepairs {input.r1} --reverse {input.r2} \
+            --label_suffix \;sample={wildcards.sample}\; \
+            --fastq_minmergelen {params.minimum_merge_length} \
+            {params.fastq_allowmergestagger} \
+            --fastq_maxdiffs {params.fastq_maxdiffs} \
+            --fastq_minovlen {params.fastq_minovlen} \
+            --fastqout {output} --log {log}
+        """
 
 
 rule count_merged_reads:
@@ -375,8 +413,10 @@ rule get_prefilter_fastq_stats:
     threads:
         1
     shell:
-        """vsearch --threads {threads} --fastq_eestats {input} \
-               --output {output}"""
+        """
+        vsearch --threads {threads} --fastq_eestats {input} \
+            --output {output}
+        """
 
 
 rule filter_merged_reads:
@@ -393,9 +433,11 @@ rule filter_merged_reads:
     log:
         "logs/{sample}_fastq_filter.log"
     shell:
-        """vsearch --fastq_filter {input} --fastq_maxee {params.maxee} \
-               --fastq_maxns {params.maxns} --fastaout {output.fa} \
-               --fastqout {output.fq}"""
+        """
+        vsearch --fastq_filter {input} --fastq_maxee {params.maxee} \
+            --fastq_maxns {params.maxns} --fastaout {output.fa} \
+            --fastqout {output.fq}
+        """
 
 
 rule get_postfilter_fastq_stats:
@@ -408,8 +450,10 @@ rule get_postfilter_fastq_stats:
     threads:
         1
     shell:
-        """vsearch --threads {threads} --fastq_eestats {input} \
-               --output {output}"""
+        """
+        vsearch --threads {threads} --fastq_eestats {input} \
+            --output {output}
+        """
 
 
 rule dereplicate_sequences_by_sample:
@@ -422,8 +466,10 @@ rule dereplicate_sequences_by_sample:
     log:
         "logs/{sample}_dereplication.log"
     shell:
-        """vsearch --derep_fulllength {input} --output {output} \
-               --strand plus --sizeout --relabel {wildcards.sample}."""
+        """
+        vsearch --derep_fulllength {input} --output {output} \
+            --strand plus --sizeout --relabel {wildcards.sample}.
+        """
 
 
 rule combine_merged_reads:
@@ -455,9 +501,11 @@ rule dereplicate_sequences:
     threads:
         config.get("threads", 1)
     shell:
-        """vsearch --derep_fulllength {input} --output {output.fa} \
-               --sizein --sizeout --minuniquesize {params.minuniquesize} \
-               --threads {threads} -log {log} --uc {output.uc}"""
+        """
+        vsearch --derep_fulllength {input} --output {output.fa} \
+            --sizein --sizeout --minuniquesize {params.minuniquesize} \
+            --threads {threads} -log {log} --uc {output.uc}
+        """
 
 
 rule precluster_sequences:
@@ -475,9 +523,11 @@ rule precluster_sequences:
     threads:
         config.get("threads", 1)
     shell:
-        """vsearch --threads {threads} --cluster_size {input} \
-               --id {params.id} --strand plus --sizein --sizeout \
-               --centroids {output.fa} --uc {output.uc}"""
+        """
+        vsearch --threads {threads} --cluster_size {input} \
+            --id {params.id} --strand plus --sizein --sizeout \
+            --centroids {output.fa} --uc {output.uc}
+        """
 
 
 rule run_denovo_chimera_filter:
@@ -492,9 +542,11 @@ rule run_denovo_chimera_filter:
     threads:
         config.get("threads", 1)
     shell:
-        """vsearch --uchime_denovo {input} --nonchimeras {output} \
-               --strand plus --sizein --sizeout --threads {threads} \
-               --log {log}"""
+        """
+        vsearch --uchime_denovo {input} --nonchimeras {output} \
+            --strand plus --sizein --sizeout --threads {threads} \
+            --log {log}
+        """
 
 
 rule run_reference_chimera_filter:
@@ -509,9 +561,11 @@ rule run_reference_chimera_filter:
     threads:
         config.get("threads", 1)
     shell:
-        """vsearch --uchime_ref {input.fasta} --nonchimeras {output} \
-               --strand plus --sizein --sizeout --db {input.db} \
-               --threads {threads} --log {log}"""
+        """
+        vsearch --uchime_ref {input.fasta} --nonchimeras {output} \
+            --strand plus --sizein --sizeout --db {input.db} \
+            --threads {threads} --log {log}
+        """
 
 
 rule extract_filtered_sequences:
@@ -554,9 +608,11 @@ rule cluster_sequences:
     threads:
         config.get("threads", 1)
     shell:
-        """vsearch --cluster_size {input} --centroids {output.fa} \
-               --relabel OTU_ --id {params.otu_id_pct} --log {log} \
-               --sizein --strand plus --threads {threads}"""
+        """
+        vsearch --cluster_size {input} --centroids {output.fa} \
+            --relabel OTU_ --id {params.otu_id_pct} --log {log} \
+            --sizein --strand plus --threads {threads}
+        """
 
 
 rule run_blast:
@@ -576,9 +632,11 @@ rule run_blast:
     threads:
         config.get("threads", 1)
     shell:
-        """blastn -query {input.fasta} -db {params.db} \
-               -num_alignments {params.num_alignments} \
-               -outfmt 6 -out {output} -num_threads {threads}"""
+        """
+        blastn -query {input.fasta} -db {params.db} \
+            -num_alignments {params.num_alignments} \
+            -outfmt 6 -out {output} -num_threads {threads}
+        """
 
 
 rule compute_lca:
@@ -594,10 +652,12 @@ rule compute_lca:
         min_score = config.get("blast_minimum_bitscore", 125),
         top_fraction = config.get("blast_top_fraction", 0.95)
     shell:
-        """hundo lca --min-score {params.min_score} \
-               --top-fraction {params.top_fraction} \
-               {input.fasta} {input.hits} {input.map} \
-               {input.tre} {output.fasta} {output.tsv}"""
+        """
+        hundo lca --min-score {params.min_score} \
+            --top-fraction {params.top_fraction} \
+            {input.fasta} {input.hits} {input.map} \
+            {input.tre} {output.fasta} {output.tsv}
+        """
 
 
 rule compile_counts:
@@ -614,10 +674,12 @@ rule compile_counts:
     threads:
         config.get("threads", 1)
     shell:
-        """vsearch --usearch_global {input.seqs} \
-               --db {input.db} --id {params.id_req} \
-               --otutabout {output.tsv} --sizein --strand plus \
-               --threads {threads}"""
+        """
+        vsearch --usearch_global {input.seqs} \
+            --db {input.db} --id {params.id_req} \
+            --otutabout {output.tsv} --sizein --strand plus \
+            --threads {threads}
+        """
 
 
 rule create_biom_from_txt:
@@ -630,23 +692,28 @@ rule create_biom_from_txt:
     conda:
         CONDAENV
     shell:
-        '''sed 's|\"||g' {input} | sed 's|\,|\;|g' > OTU_converted.txt
-           biom convert -i OTU_converted.txt -o {output} --to-json \
-               --process-obs-metadata sc_separated --table-type "OTU table"'''
+        '''
+        sed 's|\"||g' {input} | sed 's|\,|\;|g' > OTU_converted.txt
+        biom convert -i OTU_converted.txt -o {output} --to-json \
+            --process-obs-metadata sc_separated --table-type "OTU table"
+        '''
 
 
 rule multiple_align:
-    # TODO: consider testing https://doi.org/10.1093/bioinformatics/bty121
     input:
         "OTU.fasta"
     output:
         "OTU_aligned.fasta"
     threads:
+        # mafft (via conda) is single-threaded on macOS
         config.get("threads", 1)
     conda:
         CONDAENV
     shell:
-        "clustalo -i {input} -o {output} --outfmt=fasta --threads {threads} --force"
+        """
+        mafft --auto --thread {threads} --quiet --maxiterate 1000 \
+            --globalpair {input} > {output}
+        """
 
 
 rule newick_tree:
@@ -661,7 +728,8 @@ rule newick_tree:
     log:
         "logs/fasttree.log"
     shell:
-        """export OMP_NUM_THREADS={threads} && \
+        """
+        export OMP_NUM_THREADS={threads} && \
             FastTreeMP -nt -gamma -spr 4 -log {log} -quiet {input} > {output}
         """
 
@@ -670,13 +738,13 @@ rule compress_file:
     input:
         "{file}"
     output:
-        "{file}.gz"
+        temp("{file}.gz")
     threads:
         config.get("threads", 1)
     conda:
         CONDAENV
     shell:
-        "pigz --processes {threads} {input}"
+        "pigz --stdout --force --processes {threads} {input} > {output}"
 
 
 rule report:
@@ -685,7 +753,6 @@ rule report:
         file2 = "OTU.fasta.gz",
         file3 = "OTU.tree.gz",
         file4 = "OTU.txt.gz",
-        fastq_stats_pre = expand("logs/{sample}_merged_eestats.txt", sample=SAMPLES.keys()),
         fastq_stats_post = expand("logs/{sample}_merged_filtered_eestats.txt", sample=SAMPLES.keys()),
         raw_r1_quals = expand("logs/{sample}_R1_eestats.txt", sample=SAMPLES.keys()),
         raw_r2_quals = expand("logs/{sample}_R2_eestats.txt", sample=SAMPLES.keys()),
@@ -719,162 +786,306 @@ rule report:
     run:
         import csv
         import gzip
+        from collections import defaultdict
+
+        import numpy as np
+        import pandas as pd
+        import plotly.figure_factory as ff
+        import plotly.graph_objs as go
         from biom import parse_table
-        from biom.util import compute_counts_per_sample_stats
-        from collections import Counter, defaultdict
-        from operator import itemgetter
+        from plotly import offline
 
-        # stats from the biom table
-        summary_csv = "stats.csv"
-        samples_csv = "samples.csv"
-        biom_per_sample_counts = {}
-        biom_libraries = ""
-        biom_observations = ""
+        PLOTLY_PARAMS = dict(
+            include_plotlyjs=False, show_link=False, output_type="div"
+        )
 
-        with gzip.open(input.file1, "rt") as fh, \
-            open(summary_csv, 'w') as sumout, \
-            open(samples_csv, 'w') as samout:
+        def shannon_x(x, total):
+            return (x / total) * np.log(x / total) if x > 0 else 0
 
+        shannon_xf = np.vectorize(shannon_x, otypes=[np.float])
+
+        def shannon_index(arr):
+            return -1 * sum(shannon_xf(arr, sum(arr)))
+
+
+        # summary stats: stats from the biom table
+        with gzip.open(input.file1, "rt") as fh:
             bt = parse_table(fh)
-            biom_libraries = "[%s]" % ", ".join(map(str, bt.sum("sample")))
-            biom_observations = "[%s]" % ", ".join(map(str, bt.sum("observation")))
-            stats = compute_counts_per_sample_stats(bt)
-            biom_per_sample_counts = stats[4]
-            sample_counts = list(stats[4].values())
+            biom_df = bt.to_dataframe()
+            s_idx = biom_df.apply(shannon_index, axis=0)
+            s_idx.sort_values(inplace=True)
+            # sample order for plots
+            sample_order = s_idx.index.tolist()
+            mat = [
+                ["Samples", "OTUs", "OTU Total Count", "OTU Table Density"],
+                [bt.length("sample"), bt.length("observation"), bt.sum(), '{:f}'.format(bt.get_table_density())]
+            ]
+            colorscale = [[0, "#151d26"], [.5, "white"], [1, "white"]]
+            fig = ff.create_table(mat, colorscale)
+            fig["data"][0]["opacity"] = 100
+            fig["layout"]["margin"]["b"] = 30
+            fig["layout"]["margin"]["r"] = 20
+            # fig["layout"]["font"]["size"] = 13
+            summary_table = offline.plot(
+                fig,
+                **PLOTLY_PARAMS
+            )
 
-            # summary
-            print("Samples", "OTUs", "OTU Total Count", "OTU Table Density",
-                  sep=",", file=sumout)
-            print(len(bt.ids()), len(bt.ids(axis='observation')),
-                  sum(sample_counts), bt.get_table_density(), sep=",",
-                  file=sumout)
-
-            for k, v in sorted(stats[4].items(), key=itemgetter(1)):
-                print(k, '%1.1f' % v, sep=",", file=samout)
-
-        # stats from count files
-        sample_counts = {}
-
-        for sample in SAMPLES:
-            sample_counts[sample] = {}
-            metrics = ["raw_counts", "filtered_counts", "merged_counts"]
-            filepaths = ["logs/raw_counts/{sample}_R1.count".format(sample=sample),
-                         "logs/filtered_counts/{sample}_R1.count".format(sample=sample),
-                         "logs/merged_counts/{sample}_R1.count".format(sample=sample)]
-
-            for metric, filepath in zip(metrics, filepaths):
-                with open(filepath) as fh:
-                    for line in fh:
-                        sample_counts[sample][metric] = int(float(line.strip()))
-                        break
-
-        raw_counts = []
-        filtered_counts = []
-        merged_counts = []
-        biom_counts = []
-        ordered_sample_list = []
-        # sort this by the raw counts total and get the strings for the report
-        for s in sorted(sample_counts.items(), key=lambda k_v: k_v[1]['raw_counts']):
-            ordered_sample_list.append(s[0])
-            raw_counts.append(s[1]['raw_counts'])
-            filtered_counts.append(s[1]['filtered_counts'])
-            merged_counts.append(s[1]['merged_counts'])
-            try:
-                # read count contribution to OTUs
-                biom_counts.append(biom_per_sample_counts[s[0]])
-            except KeyError:
-                biom_counts.append(0)
-
-        # quoted strings within brackets
-        samples_str = "['%s']" % "', '".join(map(str, ordered_sample_list))
-        # non-quoted ints or floats within brackets
-        raw_counts_str = "[%s]" % ", ".join(map(str, raw_counts))
-        filtered_counts_str = "[%s]" % ", ".join(map(str, filtered_counts))
-        merged_counts_str = "[%s]" % ", ".join(map(str, merged_counts))
-        biom_counts_str = "[%s]" % ", ".join(map(str, biom_counts))
-
-        # counts by taxonomic level
-        def levels_from_string(taxonomy):
-            level_dict = {}
-            for level in "kpcofgs":
-                level_dict[level] = taxonomy.partition("%s__" % level)[-1].partition(",")[0]
-            return level_dict
-
-        with gzip.open(input.file4, "rt") as fh:
-            reader = csv.DictReader(fh, delimiter="\t")
-            samples_counter = defaultdict(lambda: defaultdict(Counter))
-            tax_level_quantities = defaultdict(Counter)
-            for row in reader:
-                for k, v in row.items():
-                    if "OTU ID" in k or k == "taxonomy": continue
-                    row_tax_levels = levels_from_string(row["taxonomy"])
-                    for lvl in ["p", "c", "o"]:
-                        # sum the row in order to find top taxa
-                        tax_level_quantities[lvl][row_tax_levels[lvl]] += int(v)
-                        samples_counter[k][lvl][row_tax_levels[lvl]] += int(row[k])
-
-        tax_strings = dict()
-        for level, level_counts in tax_level_quantities.items():
-            tax_strings[level] = ""
-            for assigned_level, count in level_counts.most_common():
-                series_data = []
-                tax_strings[level] += "name: '%s', " % assigned_level if not assigned_level == "?" else "name: 'Unassigned', "
-                for sample in ordered_sample_list:
-                    series_data.append(samples_counter[sample][level][assigned_level])
-                assert len(series_data) == len(ordered_sample_list)
-                tax_strings[level] += "data: [%s] " % ",".join([str(i) for i in series_data])
-                tax_strings[level] += "},{"
-        for lvl in ["p", "c", "o"]:
-            tax_strings[lvl] = tax_strings[lvl].strip("},{")
-        phylum_str = tax_strings["p"]
-        class_str = tax_strings["c"]
-        order_str = tax_strings["o"]
-
-        # fastq ee stats
-
-        # raw reads with R1 and R2 separate
-                # raw_r1_quals = expand("logs/{sample}_R1_eestats.txt", sample=SAMPLES.keys()),
-                # raw_r2_quals = expand("logs/{sample}_R2_eestats.txt", sample=SAMPLES.keys()),
-
+        # quality plot
         raw_qual_stats = defaultdict(lambda: defaultdict(list))
-        for r1_stats in input.raw_r1_quals:
-            sample_name = r1_stats.partition("logs/")[-1].partition("_R1")[0]
-            with open(r1_stats) as fh:
+        for r1_ee_file in input.raw_r1_quals:
+            sample_name = r1_ee_file.partition("logs/")[-1].partition("_R1")[0]
+            r2_ee_file = "_R2".join(r1_ee_file.rsplit("_R1", 1))
+            with open(r1_ee_file) as fh:
                 reader = csv.DictReader(fh, delimiter="\t")
                 for row in reader:
-                    raw_qual_stats["R1"][sample_name].append(row["Mean_Q"])
-        for r2_stats in input.raw_r2_quals:
-            sample_name = r2_stats.partition("logs/")[-1].partition("_R2")[0]
-            with open(r2_stats) as fh:
+                    raw_qual_stats["R1"][sample_name].append(float(row["Mean_Q"]))
+            with open(r2_ee_file) as fh:
                 reader = csv.DictReader(fh, delimiter="\t")
                 for row in reader:
-                    raw_qual_stats["R2"][sample_name].append(row["Mean_Q"])
-        raw_qual_stats_str = ""
-        for idx, sample_data in raw_qual_stats.items():
-            color = "rgba(51,102,204,0.3)" if idx == "R1" else "rgba(220,57,18,0.3)"
+                    q = float(row["Mean_Q"])
+                    raw_qual_stats["R2"][sample_name].append(q)
+        data = []
+        for read_index, sample_data in raw_qual_stats.items():
+            color = "#1f77b4" if read_index == "R1" else "#d62728"
             for sample_name, sample_stats in sample_data.items():
-                raw_qual_stats_str += "name: '%s', " % sample_name
-                raw_qual_stats_str += "data: [%s], " % ",".join(sample_stats)
-                raw_qual_stats_str += "color: '%s' },{" % color
-        raw_qual_stats_str.strip("},{")
+                data.append(go.Scatter(
+                    x=list(range(1,len(sample_stats))),
+                    y=sample_stats,
+                    name=sample_name,
+                    text=sample_name,
+                    hoverinfo="text+x+y",
+                    legendgroup=read_index,
+                    mode="lines",
+                    line=dict(
+                        color=color,
+                        dash="solid"
+                        )
+                    )
+                )
+        layout = go.Layout(
+            title='Mean Quality Scores for R1 and R2',
+            margin={"b": "auto", "r": "auto"},
+            xaxis={"title":"Position"},
+            yaxis={"title":"Quality (Phred score)"},
+            hovermode="closest",
+            showlegend=False,
+            autosize=True,
+            annotations=[
+                dict(
+                    x=0,
+                    y=1.1,
+                    xref="paper",
+                    yref="paper",
+                    text="Forward",
+                    showarrow=False,
+                    font=dict(
+                        size=16,
+                        color="#ffffff"
+                    ),
+                    align="left",
+                    borderpad=4,
+                    bgcolor="#1f77b4",
+                ),
+                dict(
+                    x=0.15,
+                    y=1.1,
+                    xref="paper",
+                    yref="paper",
+                    text="Reverse",
+                    showarrow=False,
+                    font=dict(
+                        size=16,
+                        color='#ffffff'
+                    ),
+                    align='left',
+                    borderpad=4,
+                    bgcolor="#d62728",
+                )
+            ]
+        )
+        fig = go.Figure(data=data, layout=layout)
+        quality_plot = offline.plot(
+            fig,
+            **PLOTLY_PARAMS
+        )
 
-        # merged reads
-        ee_stats = defaultdict(lambda: defaultdict(list))
-        for stats_file in input.fastq_stats_pre + input.fastq_stats_post:
-            status = "post" if stats_file.endswith("filtered_eestats.txt") else "pre"
+        # taxonomy plot with buttons
+        df = pd.read_table("OTU.txt")
+        sample_cols = [i for i in df.columns if i not in ["#OTU ID", "taxonomy"]]
+        df[["kingdom", "phylum", "class", "order", "family", "genus", "species"]] = df["taxonomy"].str.split(",", expand=True)
+        tax_dataframes = []
+        levels = ["phylum", "class", "order"]
+        for level in levels:
+            sub = df[[level] + sample_cols]
+            sub[level] = sub[level].str.replace("%s__" % level[0], "")
+            # sum same assignments over rows
+            sub = sub.groupby([level]).sum().reset_index()
+            # sort the stacks
+            sub["TotalCount"] = sub[sample_cols].sum(axis=1)
+            sub.sort_values("TotalCount", ascending=False, inplace=True)
+            # redefine columns after sort
+            sub = sub[[level] + sample_cols]
+            sub = sub.T
+            sub.columns = sub.loc[level]
+            sub.drop([level], inplace=True)
+            tax_dataframes.append(sub)
+        del(df)
+        data = []
+        lengths = []
+        for i, subset in enumerate(tax_dataframes):
+            data += [go.Bar(x=subset.index,
+                            y=subset[tax],
+                            name=tax,
+                            visible=True if i == 0 else False
+                            ) for tax in subset.columns]
+            lengths.append(len(subset.columns))
+        # plot buttons
+        updatemenus = list([
+            dict(type="buttons",
+                 active=0,
+                 buttons=list([
+                    dict(label = 'Phylum',
+                         method = 'update',
+                         args = [{'visible': [True]*lengths[0] + [False]*lengths[1]  + [False]*lengths[2]},
+                                 {"title":"Assigned Taxonomy Per Sample (Level: Phylum)"}
+                                ]),
+                    dict(label = 'Class',
+                         method = 'update',
+                         args = [{'visible': [False]*lengths[0] + [True]*lengths[1]  + [False]*lengths[2]},
+                                 {"title":"Assigned Taxonomy Per Sample (Level: Class)"}
+                                ]),
+                    dict(label = 'Order',
+                         method = 'update',
+                         args = [{'visible': [False]*lengths[0] + [False]*lengths[1]  + [True]*lengths[2]},
+                                 {"title":"Assigned Taxonomy Per Sample (Level: Order)"}
+                                ])
+                ]),
+                 direction = 'left',
+                 pad = {'r': 0, 't': 0},
+                 showactive = True,
+                 x = 0,
+                 xanchor = 'left',
+                 y = 1.05,
+                 yanchor = 'top'
+            )
+        ])
+        layout = dict(title="Assigned Taxonomy Per Sample (Level: Phylum)",
+                      updatemenus=updatemenus,
+                      barmode="stack",
+                      height=700,
+                      margin={"b": "auto", "r": "auto"},
+                      # xaxis={"tickangle": -60},
+                      yaxis={"title": "Count"},
+                      showlegend=False,
+                      hovermode='closest'
+                     )
+        fig = go.Figure(data=data, layout=layout)
+        taxonomy_plot = offline.plot(
+            fig,
+            **PLOTLY_PARAMS
+        )
+
+        # merged reads quality plot
+        ee_stats = defaultdict(list)
+        for stats_file in input.fastq_stats_post:
             sample_name = stats_file.partition("logs/")[-1].partition("_merged")[0]
             with open(stats_file) as fh:
                 reader = csv.DictReader(fh, delimiter="\t")
                 for row in reader:
-                    ee_stats[status][sample_name].append(row["Max_EE"])
-        ee_qual_str = ""
-        for status, sample_data in ee_stats.items():
-            color = "rgba(51,102,204,0.3)" if status == "pre" else "rgba(220,57,18,0.3)"
-            for sample_name, sample_stats in sample_data.items():
-                ee_qual_str += "name: '%s', " % sample_name
-                ee_qual_str += "data: [%s], " % ",".join(sample_stats)
-                ee_qual_str += "color: '%s' },{" % color
-        ee_qual_str.strip("},{")
+                    ee_stats[sample_name].append(row["Max_EE"])
+        data = []
+        for sample_name, sample_stats in ee_stats.items():
+            data.append(go.Scatter(
+                x=list(range(1,len(sample_stats))),
+                y=sample_stats,
+                name=sample_name,
+                text=sample_name,
+                hoverinfo="text+x+y",
+                mode="lines",
+                line=dict(
+                    color="#1f77b4",
+                    dash="solid"
+                    )
+                )
+            )
+        layout = go.Layout(
+            title='Merged Sequence Quality (Max EE: {})'.format(params.maximum_expected_error),
+            margin={"b": "auto", "r": "auto"},
+            yaxis={"title":"Quality (Phred score)"},
+            xaxis={"title":"Position"},
+            hovermode="closest",
+            showlegend=False
+        )
+        fig = go.Figure(data=data, layout=layout)
+        merged_reads_quality_plot = offline.plot(
+            fig,
+            **PLOTLY_PARAMS
+        )
+
+        # sample summary table
+        count_data = []
+        for sample in sample_order:
+            sd = [sample]
+            count_file = "logs/raw_counts/{}_R1.count".format(sample)
+            with open(count_file) as fh:
+                for line in fh:
+                    sd.append(int(float(line.strip())))
+            with open(count_file.replace("raw_counts/", "filtered_counts/")) as fh:
+                for line in fh:
+                    sd.append(int(float(line.strip())))
+            with open(count_file.replace("raw_counts/", "merged_counts/")) as fh:
+                for line in fh:
+                    sd.append(int(float(line.strip())))
+            sd.append(int(biom_df[sample].sum()))
+            sd.append('{:f}'.format(s_idx.loc[sample]))
+            count_data.append(sd)
+        ss = pd.DataFrame(count_data, columns=["Sample", "Raw", "Filtered", "Merged", "Assigned to OTUs", "Shannon"])
+        colorscale = [[0, '#151d26'],[.5, 'white'],[1, 'white']]
+        fig = ff.create_table(ss, colorscale=colorscale)
+        fig["data"][0]["opacity"] = 100
+        fig["layout"]["margin"]["b"] = 30
+        fig["layout"]["margin"]["r"] = 20
+        # fig["layout"]["font"]["size"] = 13
+        sample_summary_table = offline.plot(
+            fig,
+            **PLOTLY_PARAMS
+        )
+
+        # sample summary counts plot
+        data = [go.Bar(x=ss.Sample,
+                    y=ss[metric],
+                    name=metric,
+                    visible=True if i == 0 else "legendonly",
+                    ) for i, metric in enumerate(["Raw", "Filtered", "Merged", "Assigned to OTUs"])
+        ]
+        layout = dict(title="Counts Per Sample By Stage",
+                      barmode="group",
+                      height=700,
+                      margin={"b": "auto", "r": "auto"},
+                      # xaxis={"tickangle": -60},
+                      yaxis={"title": "Count"},
+                      showlegend=True,
+                      hovermode='closest',
+                      bargroupgap=0.1,
+                      legend={"orientation": "h",
+                              "x": 0,
+                              "y":1.06}
+                     )
+        fig = go.Figure(data=data, layout=layout)
+        sample_counts_plot = offline.plot(
+            fig,
+            **PLOTLY_PARAMS
+        )
+
+        # conda environment
+        conda_env = ""
+        with open(CONDAENV) as fh:
+            for i, line in enumerate(fh):
+                if i == 0:
+                    conda_env += line
+                else:
+                    conda_env += "    " + line
 
         report("""
         =============================================================
@@ -1401,403 +1612,8 @@ rule report:
 
             </style>
 
-            <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
-            <script src="https://code.highcharts.com/highcharts.js"></script>
-            <script src="https://code.highcharts.com/modules/exporting.js"></script>
-            <script type="text/javascript">
 
-            Highcharts.theme = {{
-                colors: ["#3366cc", "#dc3912", "#ff9900", "#109618", "#990099", "#0099c6", "#dd4477", "#66aa00", "#b82e2e", "#316395", "#994499", "#22aa99", "#aaaa11", "#6633cc", "#e67300", "#8b0707", "#651067", "#329262", "#5574a6", "#3b3eac"],
-                lang:
-                    {{
-                    thousandsSep: ""
-                    }}
-            }};
-            Highcharts.setOptions(Highcharts.theme);
-
-            $(function () {{
-                $('#raw-count-plot').highcharts({{
-                    chart: {{
-                        type: 'column'
-                    }},
-                    title: {{
-                        text: 'Counts Per Sample By Processing Step'
-                    }},
-                    exporting: {{
-                        enabled: false
-                    }},
-                    xAxis: {{
-                        categories: {samples_str},
-                        crosshair: true
-                    }},
-                    yAxis: {{
-                        min: 0,
-                        title: {{
-                            text: 'Count'
-                        }}
-                    }},
-                    tooltip: {{
-                        headerFormat: '<span style="font-size:10px">{{point.key}}</span><table>',
-                        pointFormat: '<tr><td style="color:{{series.color}};padding:0">{{series.name}}: </td>' +
-                            '<td style="padding:0"><b>{{point.y:.1f}}</b></td></tr>',
-                        footerFormat: '</table>',
-                        shared: true,
-                        useHTML: true
-                    }},
-                    credits: {{
-                        enabled: false
-                    }},
-                    plotOptions: {{
-                        column: {{
-                            pointPadding: 0.1,
-                            borderWidth: 0
-                        }}
-                    }},
-                    series: [{{
-                                name: 'Raw',
-                                data: {raw_counts_str}
-                            }},
-                            {{
-                                name: 'Filtered',
-                                data: {filtered_counts_str},
-                                visible: false
-                            }},
-                            {{
-                                name: 'Merged',
-                                data: {merged_counts_str},
-                                visible: false
-                            }},
-                            {{
-                                name: 'Assigned to OTUs',
-                                data: {biom_counts_str},
-                                visible: false
-                            }}]
-                    }});
-            }});
-
-            $(function() {{
-              $('#library-sizes-plot').highcharts({{
-                chart: {{
-                  type: 'column'
-                }},
-                title: {{
-                  text: 'Distribution of Counts Across Libraries'
-                }},
-                legend: {{
-                  enabled: false
-                }},
-                credits: {{
-                  enabled: false
-                }},
-                exporting: {{
-                  enabled: false
-                }},
-                tooltip: {{}},
-                plotOptions: {{
-                  column: {{
-                      pointPadding: 0.1,
-                      borderWidth: 0
-                  }}
-                }},
-                xAxis: {{
-                  title: {{
-                    text: 'Number of Reads (Counts)'
-                  }}
-                }},
-                yAxis: {{
-                  title: {{
-                    text: 'Number of Libraries'
-                  }}
-                }},
-                series: [{{
-                            name: 'Library',
-                            data: binData({biom_libraries})
-                        }}]
-                }});
-            }});
-
-            $(function() {{
-              $('#otu-totals-plot').highcharts({{
-                chart: {{
-                  type: 'column'
-                }},
-                title: {{
-                  text: 'Distribution of Counts Across OTUs'
-                }},
-                legend: {{
-                  enabled: false
-                }},
-                credits: {{
-                  enabled: false
-                }},
-                exporting: {{
-                  enabled: false
-                }},
-                tooltip: {{}},
-                plotOptions: {{
-                  column: {{
-                      pointPadding: 0.1,
-                      borderWidth: 0
-                  }}
-                }},
-                xAxis: {{
-                  title: {{
-                    text: 'Number of Reads (Counts)'
-                  }}
-                }},
-                yAxis: {{
-                  type: 'logarithmic',
-                  minorTickInterval: 0.1,
-                  title: {{
-                    text: 'log(Number of OTUs)'
-                  }}
-                }},
-                series: [{{
-                            name: 'Observations',
-                            data: binData({biom_observations})
-                        }}]
-                }});
-            }});
-
-            $(function() {{
-              var chart = Highcharts.chart('taxonomy-plot', {{
-                    chart: {{
-                      type: 'column'
-                    }},
-                    title: {{
-                      text: 'Assigned Taxonomy per Sample'
-                    }},
-                    subtitle: {{
-                        text: 'Level: Phylum'
-                    }},
-                    legend: {{
-                      enabled: false
-                    }},
-                    credits: {{
-                      enabled: false
-                    }},
-                    exporting: {{
-                      enabled: false
-                    }},
-                    tooltip: {{}},
-                    plotOptions: {{
-                      column: {{
-                          pointPadding: 0.0,
-                          groupPadding: 0.05,
-                          borderWidth: 0
-                      }},
-                      series: {{
-                          stacking: 'normal'
-                      }}
-                    }},
-                    xAxis: {{
-                      tickInterval: 1,
-                      categories: {samples_str},
-                    }},
-                    yAxis: {{
-                      min: 0,
-                    //   minorTickInterval: 0.1,
-                      title: {{
-                        text: 'Raw counts'
-                      }}
-                    }},
-                    series: [{{
-                        {phylum_str}
-                    }}]
-                }});
-
-                $('#phylum-btn').click(function () {{
-                    chart.update({{
-                        subtitle: {{
-                            text: 'Level: Phylum'
-                        }},
-                        series: [{{
-                            {phylum_str}
-                        }}]
-                    }});
-                }});
-
-                $('#class-btn').click(function () {{
-                    chart.update({{
-                        subtitle: {{
-                            text: 'Level: Class'
-                        }},
-                        series: [{{
-                            {class_str}
-                        }}]
-                    }});
-                }});
-
-                $('#order-btn').click(function () {{
-                    chart.update({{
-                        subtitle: {{
-                            text: 'Level: Order'
-                        }},
-                        series: [{{
-                            {order_str}
-                        }}]
-                    }});
-                }});
-            }});
-
-            function binData(data) {{
-
-              var hData = new Array(), //the output array
-                size = data.length, //how many data points
-                bins = Math.round(Math.sqrt(size)); //determine how many bins we need
-              bins = bins > 50 ? 50 : bins; //adjust if more than 50 cells
-              var max = Math.max.apply(null, data), //lowest data value
-                min = Math.min.apply(null, data), //highest data value
-                range = max - min, //total range of the data
-                width = range / bins, //size of the bins
-                bin_bottom, //place holders for the bounds of each bin
-                bin_top;
-
-              //loop through the number of cells
-              for (var i = 0; i < bins; i++) {{
-
-                //set the upper and lower limits of the current cell
-                bin_bottom = min + (i * width);
-                bin_top = bin_bottom + width;
-
-                //check for and set the x value of the bin
-                if (!hData[i]) {{
-                  hData[i] = new Array();
-                  hData[i][0] = bin_bottom + (width / 2);
-                }}
-
-                //loop through the data to see if it fits in this bin
-                for (var j = 0; j < size; j++) {{
-                  var x = data[j];
-
-                  //adjust if it's the first pass
-                  i == 0 && j == 0 ? bin_bottom -= 1 : bin_bottom = bin_bottom;
-
-                  //if it fits in the bin, add it
-                  if (x > bin_bottom && x <= bin_top) {{
-                    !hData[i][1] ? hData[i][1] = 1 : hData[i][1]++;
-                  }}
-                }}
-              }}
-              $.each(hData, function(i, point) {{
-                if (typeof point[1] == 'undefined') {{
-                  hData[i][1] = 0;
-                }}
-              }});
-              return hData;
-            }}
-
-            $(function() {{
-              $('#methods-qual-plot').highcharts({{
-                chart: {{
-                  type: 'line'
-                }},
-                title: {{
-                  text: 'Mean Quality Scores for R1 and R2'
-                }},
-                legend: {{
-                  enabled: false
-                }},
-                credits: {{
-                  enabled: false
-                }},
-                exporting: {{
-                  enabled: false
-                }},
-                tooltip: {{
-                    headerFormat: '',
-                    pointFormat: '<div style="color:{{series.color}};padding:0">{{series.name}}</div>',
-                    footerFormat: '<div style="font-size:10px"><b>Quality: {{point.y:.1f}}</b></div><div style="font-size:10px">Position: {{point.key}}</div>',
-                    useHTML: true
-                }},
-                plotOptions: {{
-                  column: {{
-                      pointPadding: 0.1,
-                      borderWidth: 0
-                  }},
-                  series: {{
-                      label: {{
-                        enabled: false
-                      }},
-                      line: {{
-                        marker: {{
-                            enabled: false
-                        }}
-                      }}
-                  }}
-                }},
-                xAxis: {{
-                  title: {{
-                    text: 'Position'
-                  }}
-                }},
-                yAxis: {{
-                  title: {{
-                    text: 'Quality (Phred score)'
-                  }}
-                }},
-                series: [{{
-                            {raw_qual_stats_str}
-                        }}]
-              }});
-            }});
-
-            $(function() {{
-              $('#methods-ee-plot').highcharts({{
-                chart: {{
-                  type: 'line'
-                }},
-                title: {{
-                  text: 'Maximum Expected Error Rates Before and After EE Filter'
-                }},
-                legend: {{
-                  enabled: false
-                }},
-                credits: {{
-                  enabled: false
-                }},
-                exporting: {{
-                  enabled: false
-                }},
-                tooltip: {{
-                    headerFormat: '',
-                    pointFormat: '<div style="color:{{series.color}};padding:0">{{series.name}}</div>',
-                    footerFormat: '<div style="font-size:10px"><b>EE: {{point.y:.1f}}</b></div><div style="font-size:10px">Position: {{point.key}}</div>',
-                    useHTML: true
-                }},
-                plotOptions: {{
-                  column: {{
-                      pointPadding: 0.1,
-                      borderWidth: 0
-                  }},
-                  series: {{
-                      label: {{
-                        enabled: false
-                      }},
-                      line: {{
-                        marker: {{
-                            enabled: false
-                        }}
-                      }}
-                  }}
-                }},
-                xAxis: {{
-                  title: {{
-                    text: 'Position'
-                  }}
-                }},
-                yAxis: {{
-                  title: {{
-                    text: 'Expected Error'
-                  }}
-                }},
-                series: [{{
-                            {ee_qual_str}
-                        }}]
-              }});
-            }});
-
-            </script>
+            <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 
 
         .. contents::
@@ -1806,50 +1622,37 @@ rule report:
         Summary
         -------
 
-        .. csv-table::
-            :file: {summary_csv}
-            :header-rows: 1
+        Sequence Counts
+        ***************
+
+        Samples are sorted by diversity (least to most).
+
+        .. raw:: html
+
+            {sample_summary_table}
+            {sample_counts_plot}
 
         Sequence Quality
         ****************
 
         .. raw:: html
 
-            <div id="methods-qual-plot" class="one-col"></div>
-            <div style="display: block; max-width: 800px; min-width: 300px; margin-bottom: 30px;">
-                <div class="legend-rect" style="background-color: #3366cc;"></div>
-                <div style="float: left;">Forward Read (R1)</div>
-                <div class="legend-rect" style="background-color: #dc3912;"></div>
-                <div>Reverse Read (R2)</div>
-            </div>
+            {quality_plot}
+            {merged_reads_quality_plot}
 
-        Sequence Counts
-        ***************
+        OTUs
+        ****
 
         .. raw:: html
 
-            <div id="raw-count-plot" class="one-col"></div>
+            {summary_table}
 
         Taxonomy
         ********
 
         .. raw:: html
 
-            <div id="taxonomy-plot" class="one-col"></div>
-            <div>
-                <button id="phylum-btn">Phylum</button>
-                <button id="class-btn">Class</button>
-                <button id="order-btn">Order</button>
-            </div>
-
-        Count Distribution
-        ******************
-
-        .. raw:: html
-
-            <div id="library-sizes-plot" class="two-col-left"></div>
-            <div id="otu-totals-plot" class="two-col-right"></div>
-
+            {taxonomy_plot}
 
         Methods
         -------
@@ -1865,16 +1668,6 @@ rule report:
 
         Prior to creating clusters, reads are filtered again based on expected
         error rates:
-
-        .. raw:: html
-
-            <div id="methods-ee-plot" class="one-col"></div>
-            <div style="display: block; max-width: 800px; min-width: 300px; margin-bottom: 30px;">
-                <div class="legend-rect" style="background-color: #3366cc;"></div>
-                <div style="float: left;">Before EE Filter</div>
-                <div class="legend-rect" style="background-color: #dc3912;"></div>
-                <div>After EE Filter</div>
-            </div>
 
         To create clusters, the aggregated, merged reads are dereplicated to
         remove singletons by default using VSEARCH. Sequences are preclustered
@@ -1894,7 +1687,7 @@ rule report:
         file. The Biom_ command line tool is used to convert the tab table
         to biom.
 
-        Multiple alignment of sequences is completed using `Clustal Omega`_.
+        Multiple alignment of sequences is completed using MAFFT_.
         A tree based on the aligned sequences is built using FastTree2_.
 
         This workflow is built using Snakemake_ and makes use of Bioconda_
@@ -1905,7 +1698,7 @@ rule report:
         .. _BLAST: https://blast.ncbi.nlm.nih.gov/Blast.cgi
         .. _CREST: https://github.com/lanzen/CREST
         .. _Biom: http://biom-format.org/
-        .. _Clustal Omega: http://www.clustal.org/omega/
+        .. _MAFFT: https://mafft.cbrc.jp/alignment/software/
         .. _FastTree2: http://www.microbesonline.org/fasttree/
         .. _Snakemake: https://snakemake.readthedocs.io/en/stable/
         .. _Bioconda: https://bioconda.github.io/
@@ -1936,6 +1729,15 @@ rule report:
             blast_minimum_bitscore: {params.blast_minimum_bitscore}
             blast_top_fraction: {params.blast_top_fraction}
             read_identity_requirement: {params.read_identity_requirement}
+
+
+        Execution Environment
+        ---------------------
+
+        ::
+
+            {conda_env}
+
 
         Output Files
         ------------
@@ -1974,7 +1776,7 @@ rule report:
 
         **OTU_aligned.fasta**
 
-        OTU sequences after alignment using Clustal Omega.
+        OTU sequences after alignment using MAFFT.
 
         **all-sequences.fasta**
 
