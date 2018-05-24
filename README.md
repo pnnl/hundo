@@ -104,12 +104,12 @@ The BLAST assignments per OTU sequence.
 
 Captures and summarizes data of the experimental dataset. Things like sequence quality:
 
-![plot](resources/sequence_quality.png)
+![plot](docs/_static/sequence_quality.png)
 
 And counts per sample at varying stages of pre-processing:
 
-![plot](resources/count_summary.png)
+![plot](docs/_static/count_summary.png)
 
 Taxonomies are also summarized per sample across phylum, class, and order:
 
-![plot](resources/taxonomy_summary.png)
+![plot](docs/_static/taxonomy_summary.png)
