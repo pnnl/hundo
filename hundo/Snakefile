@@ -300,10 +300,12 @@ rule get_raw_fastq_qualities:
     conda:
         CONDAENV
     threads:
-        1
+        2
+    group:
+        "sample_group"
     shell:
         """
-        vsearch --threads {threads} --fastq_eestats {input.r1} --output {output.r1}
+        vsearch --threads {threads} --fastq_eestats {input.r1} --output {output.r1} &
         vsearch --threads {threads} --fastq_eestats {input.r2} --output {output.r2}
         """
 
@@ -333,6 +335,8 @@ rule trim_and_filter_reads:
         "logs/{sample}_quality_filter.log"
     threads:
         max(int(config.get("threads", 4) * 0.25), 1)
+    group:
+        "sample_group"
     shell:
         """
         bbduk2.sh in={input.r1} in2={input.r2} out={output.r1} \
@@ -349,6 +353,9 @@ rule count_raw_reads:
         "logs/{sample}_quality_filtering_stats.txt"
     output:
         "logs/raw_counts/{sample}_R1.count"
+    # unsure if this will work
+    group:
+        "sample_group"
     run:
         with open(input[0]) as filein, open(output[0], "w") as fileout:
             for line in filein:
@@ -363,6 +370,8 @@ rule count_filtered_reads:
         "tmp/{sample}_R1.fastq"
     output:
         "logs/filtered_counts/{sample}_R1.count"
+    group:
+        "sample_group"
     shell:
         "awk '{{n++}}END{{print int(n/4)}}' {input} > {output}"
 
@@ -382,6 +391,8 @@ rule merge_reads:
         CONDAENV
     log:
         "logs/{sample}_merge_reads.log"
+    group:
+        "sample_group"
     shell:
         """
         vsearch --fastq_mergepairs {input.r1} --reverse {input.r2} \
@@ -399,6 +410,8 @@ rule count_merged_reads:
         "tmp/{sample}_merged.fastq"
     output:
         "logs/merged_counts/{sample}_R1.count"
+    group:
+        "sample_group"
     shell:
         "awk '{{n++}}END{{print int(n/4)}}' {input} > {output}"
 
@@ -412,6 +425,8 @@ rule get_prefilter_fastq_stats:
         CONDAENV
     threads:
         1
+    group:
+        "sample_group"
     shell:
         """
         vsearch --threads {threads} --fastq_eestats {input} \
@@ -432,6 +447,8 @@ rule filter_merged_reads:
         CONDAENV
     log:
         "logs/{sample}_fastq_filter.log"
+    group:
+        "sample_group"
     shell:
         """
         vsearch --fastq_filter {input} --fastq_maxee {params.maxee} \
@@ -449,6 +466,8 @@ rule get_postfilter_fastq_stats:
         CONDAENV
     threads:
         1
+    group:
+        "sample_group"
     shell:
         """
         vsearch --threads {threads} --fastq_eestats {input} \
@@ -465,6 +484,8 @@ rule dereplicate_sequences_by_sample:
         CONDAENV
     log:
         "logs/{sample}_dereplication.log"
+    group:
+        "sample_group"
     shell:
         """
         vsearch --derep_fulllength {input} --output {output} \
@@ -500,6 +521,8 @@ rule dereplicate_sequences:
         "logs/dereplicated-sequences.log"
     threads:
         config.get("threads", 1)
+    group:
+        "combined_group"
     shell:
         """
         vsearch --derep_fulllength {input} --output {output.fa} \
@@ -522,6 +545,8 @@ rule precluster_sequences:
         "logs/precluster.log"
     threads:
         config.get("threads", 1)
+    group:
+        "combined_group"
     shell:
         """
         vsearch --threads {threads} --cluster_size {input} \
@@ -541,6 +566,8 @@ rule run_denovo_chimera_filter:
         "logs/chimera-filtered_denovo.log"
     threads:
         config.get("threads", 1)
+    group:
+        "combined_group"
     shell:
         """
         vsearch --uchime_denovo {input} --nonchimeras {output} \
@@ -560,6 +587,8 @@ rule run_reference_chimera_filter:
         "logs/chimera-filtered_reference.log"
     threads:
         config.get("threads", 1)
+    group:
+        "combined_group"
     shell:
         """
         vsearch --uchime_ref {input.fasta} --nonchimeras {output} \
@@ -576,6 +605,8 @@ rule extract_filtered_sequences:
         keep_fa = "chimera-filtered_reference.fasta"
     output:
         temp("nonchimeric-nonsingleton.fasta")
+    group:
+        "combined_group"
     run:
         filter_fastas(input.filter_fa, input.uc, input.keep_fa, output[0])
 
@@ -588,6 +619,8 @@ rule pull_seqs_from_samples_with_filtered_sequences:
         keep_fa = "nonchimeric-nonsingleton.fasta"
     output:
         temp("all-sequences_filtered.fasta")
+    group:
+        "combined_group"
     run:
         filter_fastas(input.filter_fa, input.uc, input.keep_fa, output[0])
 
@@ -607,6 +640,8 @@ rule cluster_sequences:
         "logs/cluster_sequences.log"
     threads:
         config.get("threads", 1)
+    group:
+        "combined_group"
     shell:
         """
         vsearch --cluster_size {input} --centroids {output.fa} \
@@ -631,6 +666,8 @@ rule run_blast:
         CONDAENV
     threads:
         config.get("threads", 1)
+    group:
+        "combined_group"
     shell:
         """
         blastn -query {input.fasta} -db {params.db} \
@@ -651,6 +688,8 @@ rule compute_lca:
     params:
         min_score = config.get("blast_minimum_bitscore", 125),
         top_fraction = config.get("blast_top_fraction", 0.95)
+    group:
+        "combined_group"
     shell:
         """
         hundo lca --min-score {params.min_score} \
@@ -673,6 +712,8 @@ rule compile_counts:
         CONDAENV
     threads:
         config.get("threads", 1)
+    group:
+        "combined_group"
     shell:
         """
         vsearch --usearch_global {input.seqs} \
@@ -691,6 +732,8 @@ rule create_biom_from_txt:
         "shallow"
     conda:
         CONDAENV
+    group:
+        "combined_group"
     shell:
         '''
         sed 's|\"||g' {input} | sed 's|\,|\;|g' > OTU_converted.txt
@@ -709,6 +752,8 @@ rule multiple_align:
         config.get("threads", 1)
     conda:
         CONDAENV
+    group:
+        "combined_group"
     shell:
         """
         mafft --auto --thread {threads} --quiet --maxiterate 1000 \
@@ -727,6 +772,8 @@ rule newick_tree:
         CONDAENV
     log:
         "logs/fasttree.log"
+    group:
+        "combined_group"
     shell:
         """
         export OMP_NUM_THREADS={threads} && \
@@ -743,6 +790,8 @@ rule compress_file:
         config.get("threads", 1)
     conda:
         CONDAENV
+    group:
+        "combined_group"
     shell:
         "pigz --stdout --force --processes {threads} {input} > {output}"
 
@@ -783,6 +832,8 @@ rule report:
         read_identity_requirement = config.get("read_identity_requirement")
     output:
         html = "summary.html"
+    group:
+        "combined_group"
     run:
         import csv
         import gzip
