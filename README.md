@@ -2,7 +2,6 @@
 
 [![DOI](https://zenodo.org/badge/83449413.svg)](https://zenodo.org/badge/latestdoi/83449413)
 [![Documentation Status](https://readthedocs.org/projects/hundo/badge/?version=latest)](http://hundo.readthedocs.io/en/latest/?badge=latest)
-[![bioconda-badge](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat-square)](http://bioconda.github.io)
 
 + Performs quality control based on quality, can trim adapters, and remove sequences matching a contaminant database
 + Handles paired-end read merging
@@ -29,7 +28,9 @@ Really, you just need to make sure `conda` is executable and you've set up your 
 
 ```
 conda install python=3.6 \
-    pyyaml snakemake biopython biom-format=2.1.6 numpy pandas
+    pyyaml snakemake>=5.1.4 biopython \
+    biom-format=2.1.6 numpy pandas \
+    plotly=2.7.0
 pip install hundo
 ```
 
