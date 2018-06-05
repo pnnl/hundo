@@ -299,21 +299,36 @@ rule create_fasta_from_reference:
         """blastdbcmd -db {params.db} -outfmt %f -entry all -out {output}"""
 
 
-rule get_raw_fastq_qualities:
+rule get_raw_r1_fastq_qualities:
     input:
         unpack(lambda wc: SAMPLES[wc.sample])
     output:
         r1 = "logs/{sample}_R1_eestats.txt",
-        r2 = "logs/{sample}_R2_eestats.txt"
     conda:
         CONDAENV
     threads:
-        2
+        1
     group:
         "sample_group"
     shell:
         """
-        vsearch --threads {threads} --fastq_eestats {input.r1} --output {output.r1} &
+        vsearch --threads {threads} --fastq_eestats {input.r1} --output {output.r1}
+        """
+
+
+rule get_raw_r2_fastq_qualities:
+    input:
+        unpack(lambda wc: SAMPLES[wc.sample])
+    output:
+        r2 = "logs/{sample}_R2_eestats.txt",
+    conda:
+        CONDAENV
+    threads:
+        1
+    group:
+        "sample_group"
+    shell:
+        """
         vsearch --threads {threads} --fastq_eestats {input.r2} --output {output.r2}
         """
 
