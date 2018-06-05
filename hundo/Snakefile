@@ -987,20 +987,20 @@ rule report:
 
         # taxonomy plot with buttons
         df = pd.read_table("OTU.txt")
-        sample_cols = [i for i in df.columns if i not in ["#OTU ID", "taxonomy"]]
+        # sample_cols = [i for i in df.columns if i not in ["#OTU ID", "taxonomy"]]
         df[["kingdom", "phylum", "class", "order", "family", "genus", "species"]] = df["taxonomy"].str.split(",", expand=True)
         tax_dataframes = []
         levels = ["phylum", "class", "order"]
         for level in levels:
-            sub = df[[level] + sample_cols]
+            sub = df[[level] + sample_order]
             sub[level] = sub[level].str.replace("%s__" % level[0], "")
             # sum same assignments over rows
             sub = sub.groupby([level]).sum().reset_index()
             # sort the stacks
-            sub["TotalCount"] = sub[sample_cols].sum(axis=1)
+            sub["TotalCount"] = sub[sample_order].sum(axis=1)
             sub.sort_values("TotalCount", ascending=False, inplace=True)
             # redefine columns after sort
-            sub = sub[[level] + sample_cols]
+            sub = sub[[level] + sample_order]
             sub = sub.T
             sub.columns = sub.loc[level]
             sub.drop([level], inplace=True)
