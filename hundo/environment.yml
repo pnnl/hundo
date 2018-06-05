@@ -15,5 +15,6 @@ dependencies:
     - numpy>=1.14.0
     - pandas>=0.22.0
     - pigz=2.3.4
+    - plotly=2.7.0
     - pyyaml>=3.12
     - vsearch=2.6.0
