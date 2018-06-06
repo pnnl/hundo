@@ -804,27 +804,24 @@ rule newick_tree:
         """
 
 
-rule compress_file:
+rule make_deliverables_archive:
     input:
-        "{file}"
+        "OTU.biom", "OTU.fasta", "OTU.tree", "OTU.txt"
     output:
-        temp("{file}.gz")
-    threads:
-        config.get("threads", 1)
+        "hundo_results.zip"
     conda:
         CONDAENV
     group:
         "combined_group"
     shell:
-        "pigz --stdout --force --processes {threads} {input} > {output}"
+        "zip {output} {input}"
 
 
 rule report:
     input:
-        file1 = "OTU.biom.gz",
-        file2 = "OTU.fasta.gz",
-        file3 = "OTU.tree.gz",
-        file4 = "OTU.txt.gz",
+        biom = "OTU.biom",
+        txt = "OTU.txt",
+        archive = "hundo_results.zip",
         fastq_stats_post = expand("logs/{sample}_merged_filtered_eestats.txt", sample=SAMPLES.keys()),
         raw_r1_quals = expand("logs/{sample}_R1_eestats.txt", sample=SAMPLES.keys()),
         raw_r2_quals = expand("logs/{sample}_R2_eestats.txt", sample=SAMPLES.keys()),
@@ -859,7 +856,6 @@ rule report:
         "combined_group"
     run:
         import csv
-        import gzip
         from collections import defaultdict
 
         import numpy as np
@@ -886,7 +882,7 @@ rule report:
 
 
         # summary stats: stats from the biom table
-        with gzip.open(input.file1, "rt") as fh:
+        with open(input.biom) as fh:
             bt = parse_table(fh)
             biom_df = bt.to_dataframe()
             s_idx = biom_df.apply(shannon_index, axis=0)
@@ -988,7 +984,7 @@ rule report:
         )
 
         # taxonomy plot with buttons
-        df = pd.read_table("OTU.txt")
+        df = pd.read_table(input.txt)
         # sample_cols = [i for i in df.columns if i not in ["#OTU ID", "taxonomy"]]
         df[["kingdom", "phylum", "class", "order", "family", "genus", "species"]] = df["taxonomy"].str.split(",", expand=True)
         tax_dataframes = []
@@ -1179,8 +1175,6 @@ rule report:
         hundo_ - Experiment Summary
         =============================================================
 
-        .. _hundo: https://github.com/pnnl/hundo
-
         .. contents::
             :backlinks: none
 
@@ -1312,16 +1306,17 @@ rule report:
         document. Other output files are described and are written to the
         results directory.
 
+
         Attached
         ********
+
+        The zip archive contains the following files:
 
         **OTU.biom**
 
         Biom table with raw counts per sample and their associated
         taxonomic assignment formatted to be compatible with downstream tools
         like phyloseq_.
-
-        .. _phyloseq: https://joey711.github.io/phyloseq/
 
         **OTU.fasta**
 
@@ -1336,8 +1331,12 @@ rule report:
         Tab-delimited text table with columns OTU ID, a column for each sample,
         and taxonomy assignment in the final column as a comma delimited list.
 
-        Others
-        ******
+
+        Other Result Files
+        ******************
+
+        Other files that may be needed, but that are not included in the
+        attached archive include:
 
         **OTU_aligned.fasta**
 
@@ -1356,15 +1355,16 @@ rule report:
         Downloads
         ---------
 
+        .. _hundo: https://github.com/pnnl/hundo
+        .. _phyloseq: https://joey711.github.io/phyloseq/
+
         """
         report(report_str,
             output.html,
             metadata="Author: " + config.get("author", "hundo"),
             stylesheet="",
-            file1=input.file1,
-            file2=input.file2,
-            file3=input.file3,
-            file4=input.file4)
+            archive=input.archive
+        )
 
 
 onsuccess:
