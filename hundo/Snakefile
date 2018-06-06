@@ -873,6 +873,8 @@ rule report:
         PLOTLY_PARAMS = dict(
             include_plotlyjs=False, show_link=False, output_type="div"
         )
+        BLUE = "rgba(31,119,180,0.3)"
+        RED = "rgba(214,39,40,0.3)"
 
         def shannon_x(x, total):
             return (x / total) * np.log(x / total) if x > 0 else 0
@@ -922,7 +924,7 @@ rule report:
                     raw_qual_stats["R2"][sample_name].append(q)
         data = []
         for read_index, sample_data in raw_qual_stats.items():
-            color = "#1f77b4" if read_index == "R1" else "#d62728"
+            color = BLUE if read_index == "R1" else RED
             for sample_name, sample_stats in sample_data.items():
                 data.append(go.Scatter(
                     x=list(range(1,len(sample_stats))),
@@ -1079,7 +1081,7 @@ rule report:
                 hoverinfo="text+x+y",
                 mode="lines",
                 line=dict(
-                    color="#1f77b4",
+                    color=BLUE,
                     dash="solid"
                     )
                 )
