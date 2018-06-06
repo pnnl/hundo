@@ -18,3 +18,4 @@ dependencies:
     - plotly=2.7.0
     - pyyaml>=3.12
     - vsearch=2.6.0
+    - zip=3.0
