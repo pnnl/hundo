@@ -13,7 +13,7 @@ set up your channels (steps 1 and 2). Then:
 
     conda install python=3.6 \
         pyyaml snakemake>=5.1.4 biopython \
-        biom-format=2.1.6 numpy pandas \
+        biom-format=2.1.6 numpy pandas=0.23.1 \
         plotly=2.7.0
     pip install hundo
 
@@ -28,7 +28,7 @@ you can install into a new conda environment, e.g. hundo_env::
 
     conda create --name hundo_env python=3.6 \
         pyyaml snakemake>=5.1.4 biopython \
-        biom-format=2.1.6 numpy pandas \
+        biom-format=2.1.6 numpy pandas=0.23.1 \
         plotly=2.7.0
     source activate hundo_env
     pip install hundo

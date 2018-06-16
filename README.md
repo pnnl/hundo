@@ -29,7 +29,7 @@ Really, you just need to make sure `conda` is executable and you've set up your 
 ```
 conda install python=3.6 \
     pyyaml snakemake>=5.1.4 biopython \
-    biom-format=2.1.6 numpy pandas \
+    biom-format=2.1.6 numpy pandas=0.23.1 \
     plotly=2.7.0
 pip install hundo
 ```
