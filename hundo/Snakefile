@@ -1118,7 +1118,7 @@ rule report:
         layout = go.Layout(
             title='Merged Sequence Quality (Max EE: {})'.format(params.maximum_expected_error),
             margin={"b": "auto", "r": "auto"},
-            yaxis={"title":"Quality (Phred score)"},
+            yaxis={"title":"Expected Error"},
             xaxis={"title":"Position"},
             hovermode="closest",
             showlegend=False
