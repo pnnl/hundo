@@ -523,6 +523,10 @@ def run_annotate(
         \b
         https://hundo.rtfd.io
     """
+    fq_dir = list()
+    for input_dir in fastq_dir.replace(" ", "").split(","):
+        fq_dir.append(os.path.realpath(input_dir))
+    fq_dir = ",".join(fq_dir)
     database_dir = os.path.realpath(database_dir)
     filter_adapters = os.path.realpath(filter_adapters) if filter_adapters else ""
     filter_contaminants = os.path.realpath(
@@ -565,7 +569,7 @@ def run_annotate(
         jobs=jobs,
         conda="" if no_conda else "--use-conda",
         dryrun="--dryrun" if dryrun else "",
-        fq_dir=os.path.realpath(fastq_dir),
+        fq_dir=fq_dir,
         author=author,
         threads=threads,
         database_dir=database_dir,

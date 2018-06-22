@@ -26,21 +26,31 @@ we can annotate across SILVA using:
         --reference-database silva \
         mothur_sop_data
 
-.. tip::
-    The data directory can optionally be a pattern containing a wildcard,
-    such as::
 
-        hundo annotate \
-            --filter-adapters qc_references/adapters.fa.gz \
-            --filter-contaminants qc_references/phix174.fa.gz \
-            --out-dir mothur_sop_silva \
-            --database-dir annotation_references \
-            --reference-database silva \
-            'mothur_sop_data/F3D14*S20*.fastq.gz'
+The data directory can optionally be a pattern containing a wildcard,
+such as::
 
-    The string must be contained between single quotes so it isn't expanded
-    into a space delimited list.
+    hundo annotate \
+        --filter-adapters qc_references/adapters.fa.gz \
+        --filter-contaminants qc_references/phix174.fa.gz \
+        --out-dir mothur_sop_silva \
+        --database-dir annotation_references \
+        --reference-database silva \
+        'mothur_sop_data/F3D14*S20*.fastq.gz'
 
+The string must be contained between single quotes so it isn't expanded
+into a space delimited list.
+
+Or when data is spread across multiple directories, you can use a combination
+of paths and patterns in a comma separated list, like::
+
+    hundo annotate \
+        --filter-adapters qc_references/adapters.fa.gz \
+        --filter-contaminants qc_references/phix174.fa.gz \
+        --out-dir mothur_sop_silva \
+        --database-dir annotation_references \
+        --reference-database silva \
+        'collection1/LM_*.fastq.gz,collection2/rawdata'
 
 Dependencies are installed by default in the results directory defined
 on the command line as ``--out-dir``. If you want to re-use dependencies

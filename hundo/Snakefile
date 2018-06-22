@@ -41,8 +41,8 @@ def count_sequences(filename):
     return sum(buf.count(b'\n') for buf in f_gen) / 4
 
 
-def get_sample_files(fastq_dir, prefilter_file_size):
-    if not fastq_dir:
+def get_sample_files(fastq_dirs, prefilter_file_size):
+    if not fastq_dirs:
         logger.error(
             (
                 "'fastq_dir' has not been set -- this directory "
@@ -50,22 +50,27 @@ def get_sample_files(fastq_dir, prefilter_file_size):
             )
         )
         sys.exit(1)
-    if os.path.isfile(fastq_dir):
+    if os.path.isfile(fastq_dirs):
         logger.error(
             (
-                "'fastq_dir' must be a directory or a file pattern, "
+                "'fastq_dir' must be a directory, a file pattern, or a comma "
+                "separated list of both of those things "
                 "e.g. '*.fastq', with single quotes surrounding the pattern."
             )
         )
         sys.exit(1)
-    if "*" in fastq_dir:
-        from glob import glob
-
-        logger.info("Finding samples matching %s" % fastq_dir)
-        raw_fastq_files = glob(fastq_dir)
-    else:
-        logger.info("Finding samples in %s" % fastq_dir)
-        raw_fastq_files = [os.path.join(fastq_dir, i) for i in os.listdir(fastq_dir)]
+    # grab all of the possible fastq file paths
+    # user is permitted to send a single path, a single pattern, or a
+    # comma separated list of paths and patterns
+    raw_fastq_files = list()
+    for fastq_dir in fastq_dirs.split(","):
+        if "*" in fastq_dir:
+            from glob import glob
+            logger.info("Finding samples matching %s" % fastq_dir)
+            raw_fastq_files.extend(glob(fastq_dir))
+        else:
+            logger.info("Finding samples in %s" % fastq_dir)
+            raw_fastq_files.extend([os.path.join(fastq_dir, i) for i in os.listdir(fastq_dir)])
     samples = dict()
     seen = set()
     omitted = dict()
