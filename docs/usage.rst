@@ -52,6 +52,19 @@ of paths and patterns in a comma separated list, like::
         --reference-database silva \
         'collection1/LM_*.fastq.gz,collection2/rawdata'
 
+Or if you have a case where you have lots of data directories, you can
+specify ``--input-dir`` multiple times::
+
+    hundo annotate \
+        --filter-adapters qc_references/adapters.fa.gz \
+        --filter-contaminants qc_references/phix174.fa.gz \
+        --out-dir mothur_sop_silva \
+        --database-dir annotation_references \
+        --reference-database silva \
+        --input-dir collection2/rawdata \
+        --input-dir collection3/rawdata \
+        'collection1/LM_*.fastq.gz'
+
 Dependencies are installed by default in the results directory defined
 on the command line as ``--out-dir``. If you want to re-use dependencies
 across many analyses and not have to re-install each time you update the

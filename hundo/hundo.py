@@ -102,7 +102,9 @@ def run_lca(
                     # species names of the taxonomy map
                     translated_hits = [namemap[i] for i in hits.names]
                     # only slightly more stringent
-                    taxonomy = tree.lca(translated_hits, statistics.mean(hits.percent_ids))
+                    taxonomy = tree.lca(
+                        translated_hits, statistics.mean(hits.percent_ids)
+                    )
                     print_unite(name, seq, taxonomy, outfasta, outtab)
                 else:
                     # unknown
@@ -123,11 +125,11 @@ def run_lca(
                 otu.classification = tree.no_hits
                 continue
 
-            while lca_node.name in tree.assignment_min and hits.percent_ids[
-                -1
-            ] < tree.assignment_min[
-                lca_node.name
-            ] and lca_node is not tree.root:
+            while (
+                lca_node.name in tree.assignment_min
+                and hits.percent_ids[-1] < tree.assignment_min[lca_node.name]
+                and lca_node is not tree.root
+            ):
                 lca_node = tree.get_parent(lca_node)
             otu.classification = lca_node
         for otu_id, otu in otus.items():
@@ -269,6 +271,9 @@ def run_download(database_dir, jobs, reference_database, dryrun, snakemake_args)
     short_help="run annotation protocol",
 )
 @click.argument("fastq-dir")
+@click.option(
+    "-i", "--input-dir", multiple=True, help="additional FASTQ input directories"
+)
 @click.option(
     "--prefilter-file-size",
     default=100000,
@@ -479,6 +484,7 @@ def run_download(database_dir, jobs, reference_database, dryrun, snakemake_args)
 @click.argument("snakemake_args", nargs=-1, type=click.UNPROCESSED)
 def run_annotate(
     fastq_dir,
+    input_dir,
     prefilter_file_size,
     jobs,
     out_dir,
@@ -513,6 +519,9 @@ def run_annotate(
     Both R1 and R2 are expected to be present in the same directory and have
     the same name except for the index ID (R1 and R2).
 
+    FASTQ_DIR may be a comma separated list of directories or additional
+    input directories may be added --input-dir multiple times.
+
     By using SILVA, you agree to their license terms which are available at:
 
         \b
@@ -524,14 +533,17 @@ def run_annotate(
         https://hundo.rtfd.io
     """
     fq_dir = list()
-    for input_dir in fastq_dir.replace(" ", "").split(","):
-        fq_dir.append(os.path.realpath(input_dir))
+    # combine single or comma separated list with input_dir
+    all_input_paths = fastq_dir.replace(" ", "").split(",") + list(input_dir)
+    for input_path in all_input_paths:
+        fq_dir.append(os.path.realpath(input_path))
+    # format the input paths in order to send to Snakemake command
     fq_dir = ",".join(fq_dir)
     database_dir = os.path.realpath(database_dir)
     filter_adapters = os.path.realpath(filter_adapters) if filter_adapters else ""
-    filter_contaminants = os.path.realpath(
-        filter_contaminants
-    ) if filter_contaminants else ""
+    filter_contaminants = (
+        os.path.realpath(filter_contaminants) if filter_contaminants else ""
+    )
     no_temp_declared = False
     for sa in snakemake_args:
         if sa == "--nt" or sa == "--notemp":
@@ -540,7 +552,7 @@ def run_annotate(
         "snakemake --snakefile {snakefile} --directory {out_dir} "
         "--printshellcmds --jobs {jobs} --rerun-incomplete "
         "--nolock {conda} {dryrun} "
-        "--config fastq_dir={fq_dir} author='{author}' threads={threads} "
+        "--config fastq_dir={fastq_dir} author='{author}' threads={threads} "
         "database_dir={database_dir} filter_adapters={filter_adapters} "
         "filter_contaminants={filter_contaminants} "
         "allowable_kmer_mismatches={allowable_kmer_mismatches} "
@@ -569,7 +581,7 @@ def run_annotate(
         jobs=jobs,
         conda="" if no_conda else "--use-conda",
         dryrun="--dryrun" if dryrun else "",
-        fq_dir=fq_dir,
+        fastq_dir=fq_dir,
         author=author,
         threads=threads,
         database_dir=database_dir,

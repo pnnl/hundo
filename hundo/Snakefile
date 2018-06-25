@@ -838,6 +838,7 @@ rule report:
     shadow:
         "shallow"
     params:
+        fastq_dir = config.get("fastq_dir"),
         filter_adapters = "None" if not config.get("filter_adapters") else config.get("filter_adapters"),
         filter_contaminants = "None" if not config.get("filter_contaminants") else config.get("filter_contaminants"),
         allowable_kmer_mismatches = config.get("allowable_kmer_mismatches"),
@@ -1325,6 +1326,7 @@ rule report:
 
         ::
 
+            fastq_dir: {params.fastq_dir}
             filter_adapters: {params.filter_adapters}
             filter_contaminants: {params.filter_contaminants}
             allowable_kmer_mismatches: {params.allowable_kmer_mismatches}
