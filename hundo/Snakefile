@@ -35,9 +35,10 @@ def count_sequences(filename):
         import gzip
 
         f = gzip.open(filename, "rb")
+        f_gen = _make_gen(f.read)
     else:
         f = open(filename, "rb")
-    f_gen = _make_gen(f.raw.read)
+        f_gen = _make_gen(f.raw.read)
     return sum(buf.count(b'\n') for buf in f_gen) / 4
 
 
