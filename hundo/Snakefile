@@ -373,7 +373,7 @@ rule trim_and_filter_reads:
         bbduk2.sh in={input.r1} in2={input.r2} out={output.r1} \
             out2={output.r2} {params.rref} {params.lref} {params.fref} \
             {params.mink} qout=33 stats={output.stats} {params.hdist} \
-            {params.k} trimq={params.trimq} qtrim={params.qtrim}
+            {params.k} trimq={params.trimq} qtrim={params.qtrim} \
             threads={threads} minlength={params.minlength} \
             overwrite=true 2> {log}
         """
