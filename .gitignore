@@ -1,6 +1,7 @@
 example/annotation_references
 example/mothur_sop_results
 example/example_its_results
+example/additional_data
 .snakemake
 
 # Byte-compiled / optimized / DLL files

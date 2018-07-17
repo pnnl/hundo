@@ -27,10 +27,8 @@ https://bioconda.github.io/#using-bioconda
 Really, you just need to make sure `conda` is executable and you've set up your channels (numbers 1 and 2). Then:
 
 ```
-conda install python=3.6 \
-    pyyaml snakemake>=5.1.4 biopython \
-    biom-format=2.1.6 numpy pandas=0.23.1 \
-    plotly=2.7.0
+conda install python>=3.6 click \
+    pyyaml snakemake>=5.1.4 biopython
 pip install hundo
 ```
 
