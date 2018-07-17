@@ -5,10 +5,16 @@ import subprocess
 import sys
 
 from snakemake.logging import logger
-from snakemake.utils import report
+
+
+localrules: all, print_protocol_version, count_raw_reads, combine_merged_reads
 
 
 def get_conda_env():
+    """
+    Retrieves the file path of the conda definitions included in the hundo
+    Python package.
+    """
     if config.get("environment"):
         yml = config.get("environment")
     else:
@@ -30,7 +36,14 @@ def _make_gen(reader):
 
 
 def count_sequences(filename):
-    """https://stackoverflow.com/a/27518377"""
+    """
+    Used to count sequences within files of very low size. If protocol starts
+    with a file that does not have reads that will pass the sample_group
+    stage, the protocol will fail as a subsequent rule will not have an input
+    file.
+
+    Source: https://stackoverflow.com/a/27518377
+    """
     if filename.endswith(".gz"):
         import gzip
 
@@ -43,6 +56,10 @@ def count_sequences(filename):
 
 
 def get_sample_files(fastq_dirs, prefilter_file_size):
+    """
+    Looks into folders and file wildcard patterns to grab all relevant files
+    and their paired sequence. Sample names are determined from the file name.
+    """
     if not fastq_dirs:
         logger.error(
             (
@@ -186,8 +203,10 @@ def get_run_reference_chimera_filter_inputs(wildcards):
 
 
 def filter_fastas(fasta1, uclust, fasta2, output):
-    """fasta1 is the larger set of reads to be filtered
-    by read IDs in uclust and fasta2"""
+    """
+    fasta1 is the larger set of reads to be filtered
+    by read IDs in uclust and fasta2
+    """
     accepted_reads = set()
     with open(fasta2) as fh:
         for line in fh:
@@ -263,13 +282,6 @@ BLASTREF = [os.path.join(config.get("database_dir", "."), i) for i in REF]
 REFFASTA = [os.path.join(config.get("database_dir", "."), i) for i in REF if ".fasta" in i][0].rpartition(".")[0]
 REFMAP = [os.path.join(config.get("database_dir", "."), i) for i in REF if i.endswith(".map")][0]
 REFTRE = [os.path.join(config.get("database_dir", "."), i) for i in REF if i.endswith(".tre")][0]
-STYLE = """
-    <link rel="stylesheet" type="text/css" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css"/>
-    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.10.18/css/dataTables.bootstrap.min.css"/>
-    <style type="text/css">
-    body{font-family:Helvetica,arial,sans-serif;font-size:14px;line-height:1.6;padding-bottom:10px;background-color:#fff;color:#333;margin:0}body>div .section::before{content:"";display:block;height:80px;margin:-80px 0 0}#summary::before{margin:0}.topic-title{font-size:18pt}body>div>.section{margin-left:22%;margin-bottom:3em}div.section{margin-right:20px}#contents>p{display:none}button,li p.first{display:inline-block}#contents{margin-top:80px;padding-left:0;width:20%;background-color:#f1f1f1;height:100%;position:fixed;overflow:auto}#contents ul{list-style-type:none}#contents ul>li{font-size:14pt}#contents ul>li a:hover{color:#151d26}button,h1.title{color:#fff;background-color:#151d26}#contents ul>li>ul>li{font-size:12pt}h1.title{margin-top:0;position:fixed;z-index:10;padding:20px;width:100%}code,table tr:nth-child(2n),tt{background-color:#f8f8f8}.one-col{min-width:310px;height:500px;margin:0 auto}.two-col-left{height:300px;width:49%;float:left}.two-col-right{height:300px;width:49%;float:right}button{margin:0 5px 0 0;padding:5px 25px;font-size:18px;line-height:1.8;appearance:none;box-shadow:none;border-radius:3px;border:none}button:focus{outline:0}button:hover{background-color:#4183C4}button:active{background-color:#27496d}.legend-rect{width:20px;height:20px;margin-right:8px;margin-left:20px;float:left;-webkit-border-radius:2px;border-radius:2px}a{color:#4183C4;text-decoration:none}a.absent{color:#c00}a.anchor{padding-left:30px;margin-left:-30px;cursor:pointer;position:absolute;top:0;left:0;bottom:0}dl,dl dt,dl dt:first-child,hr,table,table tr{padding:0}table tr td,table tr th{border:1px solid #ccc;text-align:left;padding:6px 13px}h1,h2,h3,h4,h5,h6{margin:20px 0 10px;padding:0;font-weight:700;-webkit-font-smoothing:antialiased;cursor:text;position:relative}h1:hover a.anchor,h2:hover a.anchor,h3:hover a.anchor,h4:hover a.anchor,h5:hover a.anchor,h6:hover a.anchor{text-decoration:none}h1 code,h1 tt,h2 code,h2 tt,h3 code,h3 tt,h4 code,h4 tt,h5 code,h5 tt,h6 code,h6 tt{font-size:inherit}h1{font-size:28px;color:#151d26;border-bottom:1px solid #ccc}h2{font-size:24px;color:#000}h3{font-size:18px}h4{font-size:16px}dl dt,h5,h6{font-size:14px}h6{color:#777}blockquote,dl,li,ol,p,pre,table,ul{margin:15px 0}hr{background:url(http://tinyurl.com/bq5kskr) repeat-x;border:0;color:#ccc;height:4px}a:first-child h1,a:first-child h2,a:first-child h3,a:first-child h4,a:first-child h5,a:first-child h6{margin-top:0;padding-top:0}h1 p,h2 p,h3 p,h4 p,h5 p,h6 p{margin-top:0}dl dt{font-weight:700;font-style:italic;margin:15px 0 5px}blockquote>:first-child,dl dd>:first-child,dl dt>:first-child,table tr td :first-child,table tr th :first-child{margin-top:0}blockquote>:last-child,dl dd>:last-child,dl dt>:last-child{margin-bottom:0}dl dd{margin:0 0 15px;padding:0 15px}blockquote{border-left:4px solid #ddd;padding:0 15px;color:#777}table{border-spacing:0;border-collapse:collapse}table tr{border-top:1px solid #ccc;background-color:#fff;margin:0}table tr th{font-weight:700;margin:0}table tr td{margin:0}table tr td :last-child,table tr th :last-child{margin-bottom:0}img{max-width:100%}span.frame{display:block;overflow:hidden}span.frame>span{border:1px solid #ddd;display:block;float:left;overflow:hidden;margin:13px 0 0;padding:7px;width:auto}span.frame span img{display:block;float:left}span.frame span span{clear:both;color:#333;display:block;padding:5px 0 0}span.align-center{display:block;overflow:hidden;clear:both}span.align-center>span{display:block;overflow:hidden;margin:13px auto 0;text-align:center}span.align-center span img{margin:0 auto;text-align:center}span.align-right{display:block;overflow:hidden;clear:both}span.align-right>span{display:block;overflow:hidden;margin:13px 0 0;text-align:right}span.align-right span img{margin:0;text-align:right}span.float-left{display:block;margin-right:13px;overflow:hidden;float:left}span.float-left span{margin:13px 0 0}span.float-right{display:block;margin-left:13px;overflow:hidden;float:right}span.float-right>span{display:block;overflow:hidden;margin:13px auto 0;text-align:right}code,tt{margin:0 2px;padding:0 5px;white-space:nowrap;border:1px solid #eaeaea;border-radius:3px}pre code{margin:0;padding:0;white-space:pre;background:0 0}.highlight pre,pre{background-color:#f8f8f8;border:1px solid #ccc;font-size:13px;line-height:19px;overflow:auto;padding:6px 10px;border-radius:3px}pre code,pre tt{background-color:transparent;border:none}div#metadata{text-align:right}h1{line-height:1.6}.simple{padding-left:20px}.docutils.container{width:100%}
-    </style>
-"""
 
 
 rule all:
@@ -825,19 +837,9 @@ rule make_deliverables_archive:
         "zip {output} {input}"
 
 
-rule report:
-    input:
-        biom = "OTU.biom",
-        txt = "OTU.txt",
-        archive = "hundo_results.zip",
-        fastq_stats_post = expand("logs/{sample}_merged_filtered_eestats.txt", sample=SAMPLES.keys()),
-        raw_r1_quals = expand("logs/{sample}_R1_eestats.txt", sample=SAMPLES.keys()),
-        raw_r2_quals = expand("logs/{sample}_R2_eestats.txt", sample=SAMPLES.keys()),
-        raw_counts = expand("logs/raw_counts/{sample}_R1.count", sample=SAMPLES.keys()),
-        filtered_counts = expand("logs/filtered_counts/{sample}_R1.count", sample=SAMPLES.keys()),
-        merged_counts = expand("logs/merged_counts/{sample}_R1.count", sample=SAMPLES.keys())
-    shadow:
-        "shallow"
+rule aggregate_run_parameters:
+    output:
+        txt = "PARAMS.txt"
     params:
         fastq_dir = config.get("fastq_dir"),
         filter_adapters = "None" if not config.get("filter_adapters") else config.get("filter_adapters"),
@@ -859,580 +861,82 @@ rule report:
         blast_minimum_bitscore = config.get("blast_minimum_bitscore"),
         blast_top_fraction = config.get("blast_top_fraction"),
         read_identity_requirement = config.get("read_identity_requirement")
+    run:
+        with open(output.txt, "w") as fh:
+            print("fastq_dir:", params.fastq_dir, sep=" ", file=fh)
+            print("filter_adapters:", params.filter_adapters, sep=" ", file=fh)
+            print("filter_contaminants:", params.filter_contaminants, sep=" ", file=fh)
+            print("allowable_kmer_mismatches:", params.allowable_kmer_mismatches, sep=" ", file=fh)
+            print("reference_kmer_match_length:", params.reference_kmer_match_length, sep=" ", file=fh)
+            print("reduced_kmer_min:", params.reduced_kmer_min, sep=" ", file=fh)
+            print("minimum_passing_read_length:", params.minimum_passing_read_length, sep=" ", file=fh)
+            print("minimum_base_quality:", params.minimum_base_quality, sep=" ", file=fh)
+            print("minimum_merge_length:", params.minimum_merge_length, sep=" ", file=fh)
+            print("fastq_allowmergestagger:", params.fastq_allowmergestagger, sep=" ", file=fh)
+            print("fastq_maxdiffs:", params.fastq_maxdiffs, sep=" ", file=fh)
+            print("fastq_minovlen:", params.fastq_minovlen, sep=" ", file=fh)
+            print("maximum_expected_error:", params.maximum_expected_error, sep=" ", file=fh)
+            print("reference_chimera_filter:", params.reference_chimera_filter, sep=" ", file=fh)
+            print("minimum_sequence_abundance:", params.minimum_sequence_abundance, sep=" ", file=fh)
+            print("percent_of_allowable_difference:", params.percent_of_allowable_difference, sep=" ", file=fh)
+            print("reference_database:", params.reference_database, sep=" ", file=fh)
+            print("blast_minimum_bitscore:", params.blast_minimum_bitscore, sep=" ", file=fh)
+            print("blast_top_fraction:", params.blast_top_fraction, sep=" ", file=fh)
+            print("read_identity_requirement:", params.read_identity_requirement, sep=" ", file=fh)
+
+
+rule build_report:
+    input:
+        report_script = os.path.join(
+            os.path.dirname(os.path.abspath(workflow.snakefile)),
+            "scripts",
+            "build_report.py"
+        ),
+        biom = "OTU.biom",
+        txt = "OTU.txt",
+        archive = "hundo_results.zip",
+        params = "PARAMS.txt",
+        env = CONDAENV,
+        fastq_stats_post = expand("logs/{sample}_merged_filtered_eestats.txt",
+            sample=SAMPLES.keys()
+        ),
+        raw_r1_quals = expand("logs/{sample}_R1_eestats.txt",
+            sample=SAMPLES.keys()
+        ),
+        raw_r2_quals = expand("logs/{sample}_R2_eestats.txt",
+            sample=SAMPLES.keys()
+        ),
+        raw_counts = expand("logs/raw_counts/{sample}_R1.count",
+            sample=SAMPLES.keys()
+        ),
+        filtered_counts = expand("logs/filtered_counts/{sample}_R1.count",
+            sample=SAMPLES.keys()
+        ),
+        merged_counts = expand("logs/merged_counts/{sample}_R1.count",
+            sample=SAMPLES.keys()
+        )
+    shadow:
+        "shallow"
+    params:
+        omitted = "'%s'" % ",".join(["{sample}:{count}".format(sample=k, count=v) for k, v in OMITTED.items()]),
+        author = config.get("author", "hundo"),
+        version = "'%s'" % PROTOCOL_VERSION
     output:
         html = "summary.html"
+    conda:
+        CONDAENV
     group:
         "combined_group"
-    run:
-        import csv
-        from collections import defaultdict
-
-        import numpy as np
-        import pandas as pd
-        import plotly.figure_factory as ff
-        import plotly.graph_objs as go
-        from biom import parse_table
-        from plotly import offline
-
-
-        PLOTLY_PARAMS = dict(
-            include_plotlyjs=False, show_link=False, output_type="div"
-        )
-        BLUE = "rgba(31,119,180,0.3)"
-        RED = "rgba(214,39,40,0.3)"
-
-        def shannon_x(x, total):
-            return (x / total) * np.log(x / total) if x > 0 else 0
-
-        shannon_xf = np.vectorize(shannon_x, otypes=[np.float])
-
-        def shannon_index(arr):
-            return -1 * sum(shannon_xf(arr, sum(arr)))
-
-
-        # summary stats: stats from the biom table
-        with open(input.biom) as fh:
-            bt = parse_table(fh)
-            biom_df = bt.to_dataframe()
-            s_idx = biom_df.apply(shannon_index, axis=0)
-            s_idx.sort_values(inplace=True)
-            # sample order for plots
-            sample_order = s_idx.index.tolist()
-            otu_df = [
-                ["Samples", "OTUs", "OTU Total Count", "OTU Table Density"],
-                [bt.length("sample"), bt.length("observation"), bt.sum(), '{:f}'.format(bt.get_table_density())]
-            ]
-            otu_df = pd.DataFrame(otu_df)
-            # make the first row the column labels
-            otu_df.rename(columns=otu_df.iloc[0], inplace=True)
-            # drop the first row
-            otu_df = otu_df.reindex(otu_df.index.drop(0))
-            # build the table
-            summary_table = otu_df.to_html(
-                index=False, bold_rows=False, classes=["table", "table-bordered"], table_id="otuTable"
-            )
-            # fix for pandoc
-            summary_table = summary_table.replace("\n", "\n" + 10 * " ")
-            del(otu_df)
-
-        # quality plot
-        raw_qual_stats = defaultdict(lambda: defaultdict(list))
-        for r1_ee_file in input.raw_r1_quals:
-            sample_name = r1_ee_file.partition("logs/")[-1].partition("_R1")[0]
-            r2_ee_file = "_R2".join(r1_ee_file.rsplit("_R1", 1))
-            with open(r1_ee_file) as fh:
-                reader = csv.DictReader(fh, delimiter="\t")
-                for row in reader:
-                    raw_qual_stats["R1"][sample_name].append(float(row["Mean_Q"]))
-            with open(r2_ee_file) as fh:
-                reader = csv.DictReader(fh, delimiter="\t")
-                for row in reader:
-                    q = float(row["Mean_Q"])
-                    raw_qual_stats["R2"][sample_name].append(q)
-        data = []
-        for read_index, sample_data in raw_qual_stats.items():
-            color = BLUE if read_index == "R1" else RED
-            for sample_name, sample_stats in sample_data.items():
-                data.append(go.Scatter(
-                    x=list(range(1,len(sample_stats))),
-                    y=sample_stats,
-                    name=sample_name,
-                    text=sample_name,
-                    hoverinfo="text+x+y",
-                    legendgroup=read_index,
-                    mode="lines",
-                    line=dict(
-                        color=color,
-                        dash="solid"
-                        )
-                    )
-                )
-        layout = go.Layout(
-            title='Mean Quality Scores for R1 and R2',
-            margin={"b": "auto", "r": "auto"},
-            xaxis={"title":"Position"},
-            yaxis={"title":"Quality (Phred score)"},
-            hovermode="closest",
-            showlegend=False,
-            autosize=True,
-            annotations=[
-                dict(
-                    x=0,
-                    y=1.1,
-                    xref="paper",
-                    yref="paper",
-                    text="Forward",
-                    showarrow=False,
-                    font=dict(
-                        size=16,
-                        color="#ffffff"
-                    ),
-                    align="left",
-                    borderpad=4,
-                    bgcolor="#1f77b4",
-                ),
-                dict(
-                    x=0.15,
-                    y=1.1,
-                    xref="paper",
-                    yref="paper",
-                    text="Reverse",
-                    showarrow=False,
-                    font=dict(
-                        size=16,
-                        color='#ffffff'
-                    ),
-                    align='left',
-                    borderpad=4,
-                    bgcolor="#d62728",
-                )
-            ]
-        )
-        fig = go.Figure(data=data, layout=layout)
-        quality_plot = offline.plot(
-            fig,
-            **PLOTLY_PARAMS
-        )
-
-        # taxonomy plot with buttons
-        df = pd.read_table(input.txt)
-        # sample_cols = [i for i in df.columns if i not in ["#OTU ID", "taxonomy"]]
-        df[["kingdom", "phylum", "class", "order", "family", "genus", "species"]] = df["taxonomy"].str.split(",", expand=True)
-        tax_dataframes = []
-        tax_dataframes_rel = []
-        levels = ["phylum", "class", "order"]
-        for level in levels:
-            sub = df[[level] + sample_order].copy()
-            # cols = sub[level].tolist()
-            sub[level] = sub[level].str.replace("%s__" % level[0], "")
-            # sum same assignments over rows
-            sub = sub.groupby([level]).sum().reset_index()
-            # sort the stacks
-            sub["TotalCount"] = sub[sample_order].sum(axis=1)
-            sub.sort_values("TotalCount", ascending=False, inplace=True)
-            # redefine columns after sort
-            sub = sub[[level] + sample_order]
-            # relative abundance dataframe
-            sub_p = sub.copy()
-            sub_p[sample_order] = sub_p[sample_order].div(sub_p[sample_order].sum())
-            sub_p[sample_order] = sub_p[sample_order] * 100
-            sub_p = sub_p.transpose()
-            sub_p.columns = sub_p.loc[level]
-            sub_p.drop([level], inplace=True)
-            tax_dataframes_rel.append(sub_p)
-            # absolute abundance dataframe
-            sub = sub.transpose()
-            sub.columns = sub.loc[level]
-            sub.drop([level], inplace=True)
-            tax_dataframes.append(sub)
-        del(df)
-        data = []
-        lengths = []
-        for i, subset in enumerate(tax_dataframes):
-            data += [go.Bar(x=subset.index,
-                            y=subset[tax],
-                            name=tax,
-                            text=tax,
-                            hoverinfo="text+y",
-                            visible=True if i == 0 else False
-                            ) for tax in subset.columns]
-            lengths.append(len(subset.columns))
-        # plot buttons
-        updatemenus = list([
-            dict(type="buttons",
-                 active=0,
-                 buttons=list([
-                    dict(label = 'Phylum',
-                         method = 'update',
-                         args = [{'visible': [True]*lengths[0] + [False]*lengths[1]  + [False]*lengths[2]},
-                                 {"title":"Assigned Taxonomy Per Sample (Level: Phylum)"}
-                                ]),
-                    dict(label = 'Class',
-                         method = 'update',
-                         args = [{'visible': [False]*lengths[0] + [True]*lengths[1]  + [False]*lengths[2]},
-                                 {"title":"Assigned Taxonomy Per Sample (Level: Class)"}
-                                ]),
-                    dict(label = 'Order',
-                         method = 'update',
-                         args = [{'visible': [False]*lengths[0] + [False]*lengths[1]  + [True]*lengths[2]},
-                                 {"title":"Assigned Taxonomy Per Sample (Level: Order)"}
-                                ])
-                ]),
-                 direction = 'left',
-                 pad = {'r': 0, 't': 0},
-                 showactive = True,
-                 x = 0,
-                 xanchor = 'left',
-                 y = 1.05,
-                 yanchor = 'top'
-            )
-        ])
-        layout = dict(title="Assigned Taxonomy Per Sample (Level: Phylum)",
-                      updatemenus=updatemenus,
-                      barmode="stack",
-                      height=700,
-                      margin={"b": "auto", "r": "auto"},
-                      # xaxis={"tickangle": -60},
-                      yaxis={"title": "Count"},
-                      showlegend=False,
-                      hovermode='closest'
-                     )
-        fig = go.Figure(data=data, layout=layout)
-        taxonomy_plot = offline.plot(
-            fig,
-            **PLOTLY_PARAMS
-        )
-        # make the relative abundance taxonomy plot
-        data = []
-        for i, subset in enumerate(tax_dataframes_rel):
-            data += [go.Bar(x=subset.index,
-                            y=subset[tax],
-                            name=tax,
-                            text=tax,
-                            hoverinfo="text+y",
-                            visible=True if i == 0 else False
-                            ) for tax in subset.columns]
-        layout["yaxis"]["title"] = "Relative Abundance"
-        fig = go.Figure(data=data, layout=layout)
-        relative_abundance_taxonomy_plot = offline.plot(
-            fig,
-            **PLOTLY_PARAMS
-        )
-
-        # merged reads quality plot
-        ee_stats = defaultdict(list)
-        for stats_file in input.fastq_stats_post:
-            sample_name = stats_file.partition("logs/")[-1].partition("_merged")[0]
-            with open(stats_file) as fh:
-                reader = csv.DictReader(fh, delimiter="\t")
-                for row in reader:
-                    ee_stats[sample_name].append(row["Max_EE"])
-        data = []
-        for sample_name, sample_stats in ee_stats.items():
-            data.append(go.Scatter(
-                x=list(range(1,len(sample_stats))),
-                y=sample_stats,
-                name=sample_name,
-                text=sample_name,
-                hoverinfo="text+x+y",
-                mode="lines",
-                line=dict(
-                    color=BLUE,
-                    dash="solid"
-                    )
-                )
-            )
-        layout = go.Layout(
-            title='Merged Sequence Quality (Max EE: {})'.format(params.maximum_expected_error),
-            margin={"b": "auto", "r": "auto"},
-            yaxis={"title":"Expected Error"},
-            xaxis={"title":"Position"},
-            hovermode="closest",
-            showlegend=False
-        )
-        fig = go.Figure(data=data, layout=layout)
-        merged_reads_quality_plot = offline.plot(
-            fig,
-            **PLOTLY_PARAMS
-        )
-
-        # sample summary table
-        count_data = []
-        for sample, count in OMITTED.items():
-            count_data.append([sample, count, "NA", "NA", "NA", "NA"])
-        for sample in sample_order:
-            sd = [sample]
-            count_file = "logs/raw_counts/{}_R1.count".format(sample)
-            with open(count_file) as fh:
-                for line in fh:
-                    sd.append(int(float(line.strip())))
-            with open(count_file.replace("raw_counts/", "filtered_counts/")) as fh:
-                for line in fh:
-                    sd.append(int(float(line.strip())))
-            with open(count_file.replace("raw_counts/", "merged_counts/")) as fh:
-                for line in fh:
-                    sd.append(int(float(line.strip())))
-            sd.append(int(biom_df[sample].sum()))
-            sd.append('{:f}'.format(s_idx.loc[sample]))
-            count_data.append(sd)
-        ss = pd.DataFrame(count_data, columns=["Sample", "Raw", "Filtered", "Merged", "In OTUs", "Shannon"])
-        sample_summary_table = ss.to_html(
-            index=False, bold_rows=False, classes=["table", "table-bordered"], table_id="summaryTable"
-        )
-        sample_summary_table = sample_summary_table.replace("\n", "\n" + 10 * " ")
-
-        # sample summary counts plot
-        # remove omitted samples from df
-        keep = [idx for idx, sample in ss.Sample.items() if sample not in OMITTED]
-        ss = ss.iloc[keep]
-        data = [go.Bar(x=ss.Sample,
-                    y=ss[metric],
-                    name=metric,
-                    visible=True if i == 0 else "legendonly",
-                    ) for i, metric in enumerate(["Raw", "Filtered", "Merged", "In OTUs"])
-        ]
-        layout = dict(title="Counts Per Sample By Stage",
-                      barmode="group",
-                      height=700,
-                      margin={"b": "auto", "r": "auto"},
-                      # xaxis={"tickangle": -60},
-                      yaxis={"title": "Count"},
-                      showlegend=True,
-                      hovermode="compare",
-                      bargroupgap=0.1,
-                      legend={"orientation": "h",
-                              "x": 0,
-                              "y":1.06}
-                     )
-        fig = go.Figure(data=data, layout=layout)
-        sample_counts_plot = offline.plot(
-            fig,
-            **PLOTLY_PARAMS
-        )
-
-        # conda environment
-        conda_env = ""
-        with open(CONDAENV) as fh:
-            for i, line in enumerate(fh):
-                if i == 0:
-                    conda_env += line
-                else:
-                    conda_env += "    " + line
-
-        report_str = """
-
-        .. raw:: html
-            {STYLE}
-            <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-            <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
-            <script src="https://cdn.datatables.net/1.10.18/js/jquery.dataTables.min.js"></script>
-            <script src="https://cdn.datatables.net/1.10.18/js/dataTables.bootstrap4.min.js"></script>
-            <script>
-            $(document).ready( function () {{
-                $('#summaryTable').DataTable();
-                $('#otuTable').DataTable( {{
-                    "searching": false,
-                    "paging": false,
-                    "ordering": false,
-                    "info": false,
-                }} );
-            }} );
-            </script>
-
-        =============================================================
-        hundo_ - Experiment Summary
-        =============================================================
-
-        .. contents::
-            :backlinks: none
-            :depth: 2
-
-        Summary
-        -------
-
-        Sequence Counts
-        ***************
-
-        In the plots, samples are ordered by diversity (least to most).
-
-        .. raw:: html
-
-            <div style="overflow-x:auto;">
-            {sample_summary_table}
-            </div>
-            {sample_counts_plot}
-
-        Sequence Quality
-        ****************
-
-        .. raw:: html
-
-            {quality_plot}
-            {merged_reads_quality_plot}
-
-        OTUs
-        ****
-
-        .. raw:: html
-
-            <div style="overflow-x:auto;">
-            {summary_table}
-            </div>
-
-        Taxonomy by Count
-        *****************
-
-        .. raw:: html
-
-            {taxonomy_plot}
-
-        Taxonomy by Percent
-        *******************
-
-        .. raw:: html
-
-            {relative_abundance_taxonomy_plot}
-
-        Methods
-        -------
-
-        ``hundo`` wraps a number of functions and its exact steps are
-        dependent upon a given user's configuration.
-
-        Paired-end sequence reads are quality trimmed and can be trimmed of
-        adapters and filtered of contaminant sequences using BBDuk2 of the
-        BBTools_ package. Passing reads are merged using
-        VSEARCH_ then aggregated into a single FASTA file with headers
-        describing the origin and count of the sequence.
-
-        Prior to creating clusters, reads are filtered again based on expected
-        error rates:
-
-        To create clusters, the aggregated, merged reads are dereplicated to
-        remove singletons by default using VSEARCH. Sequences are preclustered
-        into centroids using VSEARCH to accelerate chimera filtering. Chimera
-        filtering is completed in two steps: *de novo* and then reference
-        based. The reference by default is the entire annotation database.
-        Following chimera filtering, sequences are placed into clusters using
-        distance-based, greedy cluster with VSEARCH based on the allowable
-        percent difference of the configuration.
-
-        After OTU sequences have been determined, BLAST_ is used to align
-        sequences to the reference database. Reference databases were curated
-        by the CREST_ team and hundo incorporates the CREST LCA method.
-
-        Counts are assigned to OTUs using the global alignment method of
-        VSEARCH, which outputs the final OTU table as a tab-delimited text
-        file. The Biom_ command line tool is used to convert the tab table
-        to biom.
-
-        Multiple alignment of sequences is completed using MAFFT_.
-        A tree based on the aligned sequences is built using FastTree2_.
-
-        This workflow is built using Snakemake_ and makes use of Bioconda_
-        to install its dependencies.
-
-        .. _BBTools: https://sourceforge.net/projects/bbmap/
-        .. _VSEARCH: https://github.com/torognes/vsearch
-        .. _BLAST: https://blast.ncbi.nlm.nih.gov/Blast.cgi
-        .. _CREST: https://github.com/lanzen/CREST
-        .. _Biom: http://biom-format.org/
-        .. _MAFFT: https://mafft.cbrc.jp/alignment/software/
-        .. _FastTree2: http://www.microbesonline.org/fasttree/
-        .. _Snakemake: https://snakemake.readthedocs.io/en/stable/
-        .. _Bioconda: https://bioconda.github.io/
-
-        Configuration
-        -------------
-
-        ::
-
-            fastq_dir: {params.fastq_dir}
-            filter_adapters: {params.filter_adapters}
-            filter_contaminants: {params.filter_contaminants}
-            allowable_kmer_mismatches: {params.allowable_kmer_mismatches}
-            reference_kmer_match_length: {params.reference_kmer_match_length}
-            allowable_kmer_mismatches: {params.allowable_kmer_mismatches}
-            reference_kmer_match_length: {params.reference_kmer_match_length}
-            reduced_kmer_min: {params.reduced_kmer_min}
-            minimum_passing_read_length: {params.minimum_passing_read_length}
-            minimum_base_quality: {params.minimum_base_quality}
-            minimum_merge_length: {params.minimum_merge_length}
-            allow_merge_stagger: {params.fastq_allowmergestagger}
-            max_diffs: {params.fastq_maxdiffs}
-            min_overlap: {params.fastq_minovlen}
-            maximum_expected_error: {params.maximum_expected_error}
-            reference_chimera_filter: {params.reference_chimera_filter}
-            minimum_sequence_abundance: {params.minimum_sequence_abundance}
-            percent_of_allowable_difference: {params.percent_of_allowable_difference}
-            reference_database: {params.reference_database}
-            blast_minimum_bitscore: {params.blast_minimum_bitscore}
-            blast_top_fraction: {params.blast_top_fraction}
-            read_identity_requirement: {params.read_identity_requirement}
-
-
-        Execution Environment
-        ---------------------
-
-        ::
-
-            {conda_env}
-
-
-        Output Files
-        ------------
-
-        Not all files written by the workflow are contained within the
-        Downloads section of this page to minimize the size of the this
-        document. Other output files are described and are written to the
-        results directory.
-
-
-        Attached
-        ********
-
-        The zip archive contains the following files:
-
-        OTU.biom
-        ````````
-
-        Biom table with raw counts per sample and their associated
-        taxonomic assignment formatted to be compatible with downstream tools
-        like phyloseq_.
-
-        OTU.fasta
-        `````````
-
-        Representative DNA sequences of each OTU.
-
-        OTU.tree
-        ````````
-
-        Newick tree representation of aligned OTU sequences.
-
-        OTU.txt
-        ```````
-
-        Tab-delimited text table with columns OTU ID, a column for each sample,
-        and taxonomy assignment in the final column as a comma delimited list.
-
-
-        Other Result Files
-        ******************
-
-        Other files that may be needed, but that are not included in the
-        attached archive include:
-
-        OTU_aligned.fasta
-        `````````````````
-
-        OTU sequences after alignment using MAFFT.
-
-        all-sequences.fasta
-        ```````````````````
-
-        Quality-controlled, dereplicated DNA sequences of all samples. The
-        header of each record identifies the sample of origin and the count
-        resulting from dereplication.
-
-        blast-hits.txt
-        ``````````````
-
-        The BLAST assignments per OTU sequence.
-
-        Downloads
-        ---------
-
-        .. _hundo: https://github.com/pnnl/hundo
-        .. _phyloseq: https://joey711.github.io/phyloseq/
-
+    shell:
         """
-        report(report_str,
-            output.html,
-            metadata="Author: " + config.get("author", "hundo"),
-            stylesheet="",
-            archive=input.archive
-        )
+        python {input.report_script} --biom {input.biom} --txt {input.txt} \
+            --zip {input.archive} --env {input.env} --params {input.params} \
+            --eeplot 'logs/*_merged_filtered_eestats.txt' \
+            --r1quals 'logs/*_R1_eestats.txt' \
+            --raw 'logs/raw_counts/*_R1.count' --omitted {params.omitted} \
+            --html {output.html} --author {params.author} \
+            --version {params.version}
+        """
 
 
 onsuccess:
