@@ -919,7 +919,7 @@ rule build_report:
         "shallow"
     params:
         omitted = "'%s'" % ",".join(["{sample}:{count}".format(sample=k, count=v) for k, v in OMITTED.items()]),
-        author = config.get("author", "hundo"),
+        author = "'%s'" % config.get("author", "hundo"),
         version = "'%s'" % PROTOCOL_VERSION
     output:
         html = "summary.html"
