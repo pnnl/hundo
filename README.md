@@ -2,7 +2,6 @@
 
 [![DOI](https://zenodo.org/badge/83449413.svg)](https://zenodo.org/badge/latestdoi/83449413)
 [![Documentation Status](https://readthedocs.org/projects/hundo/badge/?version=latest)](http://hundo.readthedocs.io/en/latest/?badge=latest)
-[![bioconda-badge](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat-square)](http://bioconda.github.io)
 
 + Performs quality control based on quality, can trim adapters, and remove sequences matching a contaminant database
 + Handles paired-end read merging
@@ -28,7 +27,8 @@ https://bioconda.github.io/#using-bioconda
 Really, you just need to make sure `conda` is executable and you've set up your channels (numbers 1 and 2). Then:
 
 ```
-conda install python=3.6 pyyaml snakemake biopython biom-format=2.1.5
+conda install python>=3.6 click \
+    pyyaml snakemake>=5.1.4 biopython
 pip install hundo
 ```
 
@@ -103,12 +103,12 @@ The BLAST assignments per OTU sequence.
 
 Captures and summarizes data of the experimental dataset. Things like sequence quality:
 
-![plot](resources/sequence_quality.png)
+![plot](docs/_static/sequence_quality.png)
 
 And counts per sample at varying stages of pre-processing:
 
-![plot](resources/count_summary.png)
+![plot](docs/_static/count_summary.png)
 
 Taxonomies are also summarized per sample across phylum, class, and order:
 
-![plot](resources/taxonomy_summary.png)
+![plot](docs/_static/taxonomy_summary.png)

@@ -1,6 +1,8 @@
 Annotation Output
 =================
 
+An interactive example is available at https://pnnl.github.io/hundo/.
+
 **OTU.biom**
 
 Biom table with raw counts per sample and their associated taxonomic
@@ -22,7 +24,7 @@ and taxonomy assignment in the final column as a comma delimited list.
 
 **OTU\_aligned.fasta**
 
-OTU sequences after alignment using Clustal Omega.
+OTU sequences after alignment using MAFFT.
 
 **all-sequences.fasta**
 

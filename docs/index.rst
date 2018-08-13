@@ -11,7 +11,12 @@ Documentation Contents
    parameters
    output
 
-|DOI|
+|DOI| |bioconda-badge|
+
+Results Example
+---------------
+
+https://pnnl.github.io/hundo/
 
 Summary
 -------
@@ -34,3 +39,5 @@ dependencies.
 
 .. |DOI| image:: https://zenodo.org/badge/83449413.svg
    :target: https://zenodo.org/badge/latestdoi/83449413
+.. |bioconda-badge| image:: https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat
+  :target: http://bioconda.github.io

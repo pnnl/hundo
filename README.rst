@@ -34,8 +34,10 @@ set up your channels (numbers 1 and 2). Then:
 
 ::
 
-    conda install python=3.6 pyyaml snakemake biopython biom-format=2.1.5
+    conda install python>=3.6 click \
+        pyyaml snakemake>=5.1.4 biopython
     pip install hundo
+
 
 Usage
 =====

@@ -1,18 +1,16 @@
-import click
 import logging
 import multiprocessing
 import os
 import subprocess
 import sys
 from collections import OrderedDict
-
+import click
 # local imports
 import hundo.unite_classifier as unite_lca
 import hundo.crest_classifier as crest_lca
-from hundo import __version__
 from hundo.blast import parse_blasthits, parse_vsearchhits
 from hundo.fasta import read_fasta, format_fasta_record
-
+from hundo import __version__
 
 logging.basicConfig(
     level=logging.INFO,
@@ -83,6 +81,11 @@ def run_lca(
     """Classifies BLAST or VSEARCH HSPs using associated newick tree with corresponding
     names and map.
     """
+    import statistics
+    import hundo.unite_classifier as unite_lca
+    import hundo.crest_classifier as crest_lca
+    from hundo.blast import parse_blasthits
+    from hundo.fasta import read_fasta, format_fasta_record
 
     def print_unite(name, seq, tx, fa, tsv):
         full_name = "{name};tax={taxonomy}".format(
@@ -116,12 +119,14 @@ def run_lca(
                     # need to translate fasta names of blast hits to
                     # species names of the taxonomy map
                     translated_hits = [namemap[i] for i in hits.names]
-                    taxonomy = tree.lca(translated_hits, hits.percent_ids[-1])
+                    # only slightly more stringent
+                    taxonomy = tree.lca(
+                        translated_hits, statistics.mean(hits.percent_ids)
+                    )
                     print_unite(name, seq, taxonomy, outfasta, outtab)
                 else:
                     # unknown
                     print_unite(name, seq, unknown_taxonomy, outfasta, outtab)
-
     # silva/gg
     else:
         otus = OrderedDict()
@@ -170,11 +175,123 @@ def get_snakefile():
 
 
 @cli.command(
+    "download",
+    context_settings=dict(ignore_unknown_options=True),
+    short_help="download reference data (Optional)",
+)
+@click.option(
+    "-d",
+    "--database-dir",
+    default="references",
+    show_default=True,
+    help="directory containing reference data or new directory into which to download reference data",
+)
+@click.option(
+    "-j",
+    "--jobs",
+    default=multiprocessing.cpu_count(),
+    type=int,
+    show_default=True,
+    help="use at most this many cores in parallel",
+)
+@click.option(
+    "--rd",
+    "--reference-database",
+    default="silva",
+    type=click.Choice(["silva", "greengenes", "unite"]),
+    show_default=True,
+    help="two 16S databases are supported along with Unite for ITS; only the reference specified will be downloaded",
+)
+@click.option(
+    "--dryrun",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="do not execute anything, just show the commands that would be executed",
+)
+@click.argument("snakemake_args", nargs=-1, type=click.UNPROCESSED)
+def run_download(database_dir, jobs, reference_database, dryrun, snakemake_args):
+    """
+    Download the reference databases, but do not execute any of the 16S or ITS
+    annotation protocol. Running this prior to `hundo annotate` is not
+    required, but may be useful in instances where compute nodes do not have
+    internet access.
+    """
+    database_dir = os.path.realpath(database_dir)
+    targets = []
+    if reference_database == "greengenes":
+        targets = " ".join(
+            [
+                os.path.join(database_dir, i)
+                for i in [
+                    "greengenes.fasta.nhr",
+                    "greengenes.fasta.nin",
+                    "greengenes.fasta.nsq",
+                    "greengenes.map",
+                    "greengenes.tre",
+                ]
+            ]
+        )
+    elif reference_database == "silva":
+        targets = " ".join(
+            [
+                os.path.join(database_dir, i)
+                for i in [
+                    "silvamod128.fasta.nhr",
+                    "silvamod128.fasta.nin",
+                    "silvamod128.fasta.nsq",
+                    "silvamod128.map",
+                    "silvamod128.tre",
+                ]
+            ]
+        )
+    else:
+        targets = " ".join(
+            [
+                os.path.join(database_dir, i)
+                for i in [
+                    "unite.fasta.nhr",
+                    "unite.fasta.nin",
+                    "unite.fasta.nsq",
+                    "unite.map",
+                    "unite.tre",
+                ]
+            ]
+        )
+    cmd = (
+        "snakemake --snakefile {snakefile} --printshellcmds "
+        "--jobs {jobs} --rerun-incomplete "
+        "--nolock {dryrun} "
+        "--config database_dir={database_dir} workflow=download "
+        "reference_database={reference_database} "
+        "{add_args} {args} {targets}"
+    ).format(
+        snakefile=get_snakefile(),
+        jobs=jobs,
+        dryrun="--dryrun" if dryrun else "",
+        database_dir=database_dir,
+        reference_database=reference_database,
+        add_args="" if snakemake_args and snakemake_args[0].startswith("-") else "--",
+        args=" ".join(snakemake_args),
+        targets=targets,
+    )
+    logging.info("Executing: " + cmd)
+    try:
+        subprocess.check_call(cmd, shell=True)
+    except subprocess.CalledProcessError as e:
+        # removes the traceback
+        logging.critical(e)
+
+
+@cli.command(
     "annotate",
     context_settings=dict(ignore_unknown_options=True),
     short_help="run annotation protocol",
 )
 @click.argument("fastq-dir", type=click.Path(exists=True))
+@click.option(
+    "-i", "--input-dir", multiple=True, help="additional FASTQ input directories"
+)
 @click.option(
     "--prefilter-file-size",
     default=100000,
@@ -392,6 +509,7 @@ def get_snakefile():
 @click.argument("snakemake_args", nargs=-1, type=click.UNPROCESSED)
 def run_annotate(
     fastq_dir,
+    input_dir,
     prefilter_file_size,
     jobs,
     out_dir,
@@ -427,6 +545,9 @@ def run_annotate(
     Both R1 and R2 are expected to be present in the same directory and have
     the same name except for the index ID (R1 and R2).
 
+    FASTQ_DIR may be a comma separated list of directories or additional
+    input directories may be added --input-dir multiple times.
+
     By using SILVA, you agree to their license terms which are available at:
 
         \b
@@ -437,17 +558,22 @@ def run_annotate(
         \b
         https://hundo.rtfd.io
     """
+    fq_dir = list()
+    # combine single or comma separated list with input_dir
+    all_input_paths = fastq_dir.replace(" ", "").split(",") + list(input_dir)
+    for input_path in all_input_paths:
+        fq_dir.append(os.path.realpath(input_path))
+    # format the input paths in order to send to Snakemake command
+    fq_dir = ",".join(fq_dir)
     database_dir = os.path.realpath(database_dir)
     filter_adapters = os.path.realpath(filter_adapters) if filter_adapters else ""
     filter_contaminants = (
         os.path.realpath(filter_contaminants) if filter_contaminants else ""
     )
-
     no_temp_declared = False
     for sa in snakemake_args:
         if sa == "--nt" or sa == "--notemp":
             no_temp_declared = True
-
     cmd = (
         "snakemake --snakefile {snakefile} --directory {out_dir} "
         "--printshellcmds --jobs {jobs} --rerun-incomplete "
@@ -512,7 +638,6 @@ def run_annotate(
         args=" ".join(snakemake_args),
     )
     logging.info("Executing: " + cmd)
-
     try:
         subprocess.check_call(cmd, shell=True)
     except subprocess.CalledProcessError as e:
