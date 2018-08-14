@@ -323,7 +323,7 @@ def build_attachment(zip):
 
 
 def main(
-    biom, txt, zip, env, params, eeplot, r1quals, raw, omitted, html, author, version
+    biom, txt, zip, env, params, eeplot, r1quals, raw, omitted, html, author, version, samples
 ):
     # resolve the file patterns
     eeplot = glob(eeplot, recursive=False)
@@ -348,6 +348,7 @@ def main(
     conda_str = format_from_file(env)
     metadata = get_metadata(author, version)
     attachment = build_attachment(zip)
+    samples_attachment = build_attachment(samples)
     report_str = f"""
 
 .. raw:: html
@@ -547,6 +548,14 @@ Downloads
 
                     {attachment}
 
+        .. container::
+            :name: samples
+
+            samples:
+                .. raw:: html
+
+                    {samples_attachment}
+
 
 .. container::
    :name: metadata
@@ -579,6 +588,7 @@ if __name__ == "__main__":
     p.add_argument("--html")
     p.add_argument("--author")
     p.add_argument("--version")
+    p.add_argument("--samples")
     args = p.parse_args()
     main(
         args.biom,
@@ -593,4 +603,5 @@ if __name__ == "__main__":
         args.html,
         args.author,
         args.version,
+        args.samples,
     )
