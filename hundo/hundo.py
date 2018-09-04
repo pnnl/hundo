@@ -290,7 +290,11 @@ def run_download(database_dir, jobs, reference_database, dryrun, snakemake_args)
 )
 @click.argument("fastq-dir", type=click.Path(exists=True))
 @click.option(
-    "-i", "--input-dir", multiple=True, help="additional FASTQ input directories"
+    "-i",
+    "--input-dir",
+    multiple=True,
+    help=("add directories in which to search for sample input file pairs "
+        "in addition to FASTQ_DIR; may be specified multiple times")
 )
 @click.option(
     "--prefilter-file-size",
@@ -541,12 +545,12 @@ def run_annotate(
     snakemake_args,
 ):
     """
-    Run annotation across paired-end sequence data contained in a directory.
+    Run annotation across paired-end sequence data contained in FASTQ_DIR.
     Both R1 and R2 are expected to be present in the same directory and have
     the same name except for the index ID (R1 and R2).
 
     FASTQ_DIR may be a comma separated list of directories or additional
-    input directories may be added --input-dir multiple times.
+    input directories may be added using --input-dir multiple times.
 
     By using SILVA, you agree to their license terms which are available at:
 

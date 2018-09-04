@@ -174,11 +174,7 @@ def get_sample_files(fastq_dirs, prefilter_file_size):
                 fastq_paths = {"r1": other_idx, "r2": fq_path}
         if fastq_paths:
             samples[sample_id] = fastq_paths
-    logger.info("\nFound %d samples for processing:\n" % len(samples))
-    samples_str = ""
-    for k, v in samples.items():
-        samples_str += "%s: %s; %s\n" % (k, v["r1"], v["r2"])
-    logger.info(samples_str)
+    # logger.info("\nFound %d samples for processing:\n" % len(samples))
     return samples, omitted
 
 
@@ -295,6 +291,19 @@ rule print_protocol_version:
         "PROTOCOL-VERSION.txt"
     shell:
         "hundo --version > {output}"
+
+
+localrules: print_samples
+rule print_samples:
+    output:
+        "SAMPLES.txt"
+    run:
+        with open(output[0], "w") as fh:
+            for k, v in SAMPLES.items():
+                print("%s: %s; %s" % (k, v["r1"], v["r2"]), file=fh)
+            print("\n", file=fh)
+            for k, v in OMITTED.items():
+                print("%s: %d total sequences" % (k, v), file=fh)
 
 
 rule download_reference_data:
@@ -952,7 +961,8 @@ rule build_report:
         ),
         merged_counts = expand("logs/merged_counts/{sample}_R1.count",
             sample=SAMPLES.keys()
-        )
+        ),
+        samples = "SAMPLES.txt"
     shadow:
         "shallow"
     params:
@@ -973,7 +983,7 @@ rule build_report:
             --r1quals 'logs/*_R1_eestats.txt' \
             --raw 'logs/raw_counts/*_R1.count' --omitted {params.omitted} \
             --html {output.html} --author {params.author} \
-            --version {params.version}
+            --version {params.version} --samples {input.samples}
         """
 
 
