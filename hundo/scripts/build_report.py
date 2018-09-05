@@ -427,9 +427,10 @@ Following chimera filtering, sequences are placed into clusters using
 distance-based, greedy cluster with VSEARCH based on the allowable
 percent difference of the configuration.
 
-After OTU sequences have been determined, BLAST_ is used to align
-sequences to the reference database. Reference databases were curated
-by the CREST_ team and hundo incorporates the CREST LCA method.
+After OTU sequences have been determined, BLAST_ or VSEARCH is used to align
+sequences to the reference database. Reference databases for 16S were curated
+by the CREST_ team and hundo incorporates the CREST LCA method. ITS databases
+are maintained by UNITE_.
 
 Counts are assigned to OTUs using the global alignment method of
 VSEARCH, which outputs the final OTU table as a tab-delimited text
@@ -446,6 +447,7 @@ to install its dependencies.
 .. _VSEARCH: https://github.com/torognes/vsearch
 .. _BLAST: https://blast.ncbi.nlm.nih.gov/Blast.cgi
 .. _CREST: https://github.com/lanzen/CREST
+.. _UNITE: https://unite.ut.ee/
 .. _Biom: http://biom-format.org/
 .. _MAFFT: https://mafft.cbrc.jp/alignment/software/
 .. _FastTree2: http://www.microbesonline.org/fasttree/
