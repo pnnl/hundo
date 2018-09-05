@@ -24,12 +24,12 @@ def read_fasta(fh):
     >>> f.close()
     >>> os.remove("test.fasta")
     """
-    for header, group in groupby(fh, lambda line: line[0] == '>'):
+    for header, group in groupby(fh, lambda line: line[0] == ">"):
         if header:
             line = next(group)
             name = line[1:].strip()
         else:
-            seq = ''.join(line.strip() for line in group)
+            seq = "".join(line.strip() for line in group)
             yield name, seq
 
 
@@ -52,7 +52,7 @@ def format_fasta_record(name, seq, wrap=80):
     record = ">" + name + "\n"
     if wrap:
         for i in range(0, len(seq), wrap):
-            record += seq[i:i+wrap] + "\n"
+            record += seq[i : i + wrap] + "\n"
     else:
         record += seq + "\n"
     return record.strip()
