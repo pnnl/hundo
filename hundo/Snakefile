@@ -7,9 +7,6 @@ import sys
 from snakemake.logging import logger
 
 
-localrules: all, print_protocol_version, count_raw_reads, combine_merged_reads
-
-
 def get_conda_env():
     """
     Retrieves the file path of the conda definitions included in the hundo
@@ -280,12 +277,14 @@ REFMAP = [os.path.join(config.get("database_dir", "."), i) for i in REF if i.end
 REFTRE = [os.path.join(config.get("database_dir", "."), i) for i in REF if i.endswith(".tre")][0]
 
 
+localrules: all
 rule all:
     input:
         "summary.html",
         "PROTOCOL-VERSION.txt"
 
 
+localrules: print_protocol_version
 rule print_protocol_version:
     output:
         "PROTOCOL-VERSION.txt"
@@ -400,6 +399,7 @@ rule trim_and_filter_reads:
         """
 
 
+localrules: count_raw_reads
 rule count_raw_reads:
     input:
         "logs/{sample}_quality_filtering_stats.txt"
@@ -545,6 +545,7 @@ rule dereplicate_sequences_by_sample:
         """
 
 
+localrules: combine_merged_reads
 rule combine_merged_reads:
     input:
         fastas = expand("tmp/{sample}_dereplicated.fasta", sample=SAMPLES)
@@ -702,36 +703,62 @@ rule cluster_sequences:
         """
 
 
-rule run_blast:
-    input:
-        fasta = "OTU.fasta",
-        # force download
-        db = BLASTREF,
-        db_fa = REFFASTA
-    output:
-        "blast-hits.txt"
-    params:
-        # works due to file naming convention
-        db = REFFASTA,
-        num_alignments = config.get("blast_num_alignments", 12)
-    conda:
-        CONDAENV
-    threads:
-        config.get("threads", 1)
-    group:
-        "combined_group"
-    shell:
-        """
-        blastn -query {input.fasta} -db {params.db} \
-            -num_alignments {params.num_alignments} \
-            -outfmt 6 -out {output} -num_threads {threads}
-        """
+if config.get("aligner") == "blast":
+    rule run_aligner:
+        input:
+            fasta = "OTU.fasta",
+            # force download
+            db = BLASTREF,
+            db_fa = REFFASTA
+        output:
+            "local-hits.txt"
+        params:
+            # works due to file naming convention
+            db = REFFASTA,
+            num_alignments = config.get("blast_num_alignments", 25),
+            id_req = config.get("min_id_req", 0.6),
+            max_rej = config.get("max_reject", 100),
+        conda:
+            CONDAENV
+        threads:
+            config.get("threads", 1)
+        shell:
+            """
+            blastn -query {input.fasta} -db {params.db} \
+                -num_alignments {params.num_alignments} \
+                -outfmt 6 -out {output} -num_threads {threads}
+            """
+# VSEARCH was chosen as the aligner
+else:
+    rule run_aligner:
+        input:
+            fasta = "OTU.fasta",
+            db = BLASTREF,
+            db_fa = REFFASTA
+        output:
+            "local-hits.txt"
+        params:
+            db = REFFASTA,
+            num_alignments = config.get("blast_num_alignments", 25),
+            id_req = config.get("min_id_req", 0.6),
+            max_rej = config.get("max_reject", 100),
+        conda:
+            CONDAENV
+        threads:
+            config.get("threads", 1)
+        shell:
+            """
+            vsearch --usearch_global {input.fasta} --db {params.db} \
+                --maxaccepts {params.num_alignments} --threads {threads} \
+                --maxrejects {params.max_rej} --strand plus \
+                --id {params.id_req} --blast6out {output}
+            """
 
 
 rule compute_lca:
     input:
         fasta = "OTU.fasta",
-        hits = "blast-hits.txt",
+        hits = "local-hits.txt",
         map = REFMAP,
         tre = REFTRE
     output:
@@ -739,15 +766,17 @@ rule compute_lca:
         tsv = temp("OTU_assignments.tsv")
     params:
         min_score = config.get("blast_minimum_bitscore", 125),
-        top_fraction = config.get("blast_top_fraction", 0.95)
+        min_pid = config.get("min_pid", .85),
+        aligner = config.get("aligner"),
+        top_fraction = 0.99 if not config.get("aligner") == "blast" else config.get("blast_top_fraction", 0.95),
     group:
         "combined_group"
     shell:
         """
-        hundo lca --min-score {params.min_score} \
-            --top-fraction {params.top_fraction} \
-            {input.fasta} {input.hits} {input.map} \
-            {input.tre} {output.fasta} {output.tsv}
+        hundo lca --min-score {params.min_score} --min-pid {params.min_pid} \
+            --top-fraction {params.top_fraction} --aligner {params.aligner} \
+            {input.fasta} {input.hits} {input.map} {input.tre} {output.fasta} \
+            {output.tsv}
         """
 
 
@@ -869,7 +898,8 @@ rule aggregate_run_parameters:
         reference_database = config.get("reference_database"),
         blast_minimum_bitscore = config.get("blast_minimum_bitscore"),
         blast_top_fraction = config.get("blast_top_fraction"),
-        read_identity_requirement = config.get("read_identity_requirement")
+        read_identity_requirement = config.get("read_identity_requirement"),
+        aligner = config.get("aligner")
     run:
         with open(output.txt, "w") as fh:
             print("fastq_dir:", params.fastq_dir, sep=" ", file=fh)
@@ -889,6 +919,7 @@ rule aggregate_run_parameters:
             print("minimum_sequence_abundance:", params.minimum_sequence_abundance, sep=" ", file=fh)
             print("percent_of_allowable_difference:", params.percent_of_allowable_difference, sep=" ", file=fh)
             print("reference_database:", params.reference_database, sep=" ", file=fh)
+            print("aligner:", params.aligner, sep=" ", file=fh)
             print("blast_minimum_bitscore:", params.blast_minimum_bitscore, sep=" ", file=fh)
             print("blast_top_fraction:", params.blast_top_fraction, sep=" ", file=fh)
             print("read_identity_requirement:", params.read_identity_requirement, sep=" ", file=fh)

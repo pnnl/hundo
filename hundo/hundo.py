@@ -7,7 +7,12 @@ from collections import OrderedDict
 
 import click
 
+import hundo.crest_classifier as crest_lca
+# local imports
+import hundo.unite_classifier as unite_lca
 from hundo import __version__
+from hundo.blast import parse_blasthits, parse_vsearchhits
+from hundo.fasta import format_fasta_record, read_fasta
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,9 +37,9 @@ def cli(obj):
     """
 
 
-@cli.command("lca", short_help="runs LCA across BLAST hits")
+@cli.command("lca", short_help="runs LCA across aligned hits")
 @click.argument("fasta", type=click.Path(exists=True))
-@click.argument("blasthits", type=click.File("r"))
+@click.argument("aligned_hits", type=click.File("r"))
 @click.argument("mapfile", type=click.File("r"))
 @click.argument("trefile", type=click.File("r"))
 @click.argument("outfasta", type=click.File("w"))
@@ -47,23 +52,35 @@ def cli(obj):
     help="minimum allowable bitscore",
 )
 @click.option(
+    "--min-pid", type=float, default=0.85, show_default=True, help="min percent id"
+)
+@click.option(
     "--top-fraction",
     type=float,
-    default=0.95,
+    default=0.99,
     show_default=True,
-    help="calculate LCA based on HSPS within this fraction of highest scoring HSP",
+    help="calculate LCA based on HSPS within this fraction of highest scoring HSP. Vsearch accuracy decreases with a lower number than this",
+)
+@click.option(
+    "--aligner",
+    type=str,
+    default="blast",
+    show_default=True,
+    help="pick which aligner that you would like to use, blast or vsearch. default:blast",
 )
 def run_lca(
     fasta,
-    blasthits,
+    aligned_hits,
     mapfile,
     trefile,
     outfasta,
     outtab,
-    min_score=125,
-    top_fraction=0.95,
+    min_score,
+    min_pid,
+    top_fraction,
+    aligner,
 ):
-    """Classifies BLAST HSPs using associated newick tree with corresponding
+    """Classifies BLAST or VSEARCH HSPs using associated newick tree with corresponding
     names and map.
     """
     import statistics
@@ -87,8 +104,11 @@ def run_lca(
         return m
 
     protocol = "16S" if not "unite" in os.path.basename(mapfile.name) else "ITS"
-    logging.info("Parsing BLAST hits")
-    hsps = parse_blasthits(blasthits, min_score, top_fraction)
+    logging.info("Parsing aligned hits")
+    if aligner == "vsearch":
+        hsps = parse_vsearchhits(aligned_hits, min_pid, top_fraction)
+    else:
+        hsps = parse_blasthits(aligned_hits, min_score, top_fraction)
     unknown_taxonomy = ["%s__?" % i for i in "kpcofgs"]
     if protocol == "ITS":
         tree = unite_lca.Tree(trefile)
@@ -270,13 +290,15 @@ def run_download(database_dir, jobs, reference_database, dryrun, snakemake_args)
     context_settings=dict(ignore_unknown_options=True),
     short_help="run annotation protocol",
 )
-@click.argument("fastq-dir")
+@click.argument("fastq-dir", type=click.Path(exists=True))
 @click.option(
     "-i",
     "--input-dir",
     multiple=True,
-    help=("add directories in which to search for sample input file pairs "
-        "in addition to FASTQ_DIR; may be specified multiple times")
+    help=(
+        "add directories in which to search for sample input file pairs "
+        "in addition to FASTQ_DIR; may be specified multiple times"
+    ),
 )
 @click.option(
     "--prefilter-file-size",
@@ -320,6 +342,13 @@ def run_download(database_dir, jobs, reference_database, dryrun, snakemake_args)
     default=subprocess.check_output(["whoami"]).decode("utf-8").strip(),
     show_default=True,
     help="will show in footer of summary HTML document",
+)
+@click.option(
+    "--aligner",
+    type=click.Choice(choices=["blast", "vsearch"]),
+    default="blast",
+    show_default=True,
+    help="local aligner; `blast` is more sensitive while `vsearch` is much faster",
 )
 @click.option(
     "-t",
@@ -495,6 +524,7 @@ def run_annotate(
     no_conda,
     dryrun,
     author,
+    aligner,
     threads,
     database_dir,
     filter_adapters,
@@ -556,7 +586,7 @@ def run_annotate(
         "snakemake --snakefile {snakefile} --directory {out_dir} "
         "--printshellcmds --jobs {jobs} --rerun-incomplete "
         "--nolock {conda} {dryrun} "
-        "--config fastq_dir={fastq_dir} author='{author}' threads={threads} "
+        "--config fastq_dir={fq_dir} author='{author}' threads={threads} "
         "database_dir={database_dir} filter_adapters={filter_adapters} "
         "filter_contaminants={filter_contaminants} "
         "allowable_kmer_mismatches={allowable_kmer_mismatches} "
@@ -577,6 +607,7 @@ def run_annotate(
         "blast_top_fraction={blast_top_fraction} "
         "read_identity_requirement={read_identity_requirement} "
         "prefilter_file_size={prefilter_file_size} "
+        "aligner={aligner} "
         "no_temp_declared={no_temp_declared} {add_args} "
         "{args}"
     ).format(
@@ -585,7 +616,7 @@ def run_annotate(
         jobs=jobs,
         conda="" if no_conda else "--use-conda",
         dryrun="--dryrun" if dryrun else "",
-        fastq_dir=fq_dir,
+        fq_dir=os.path.realpath(fastq_dir),
         author=author,
         threads=threads,
         database_dir=database_dir,
@@ -609,6 +640,7 @@ def run_annotate(
         blast_top_fraction=blast_top_fraction,
         read_identity_requirement=read_identity_requirement,
         prefilter_file_size=prefilter_file_size,
+        aligner=aligner,
         no_temp_declared=no_temp_declared,
         add_args="" if snakemake_args and snakemake_args[0].startswith("-") else "--",
         args=" ".join(snakemake_args),

@@ -6,22 +6,24 @@ from Bio import Phylo
 
 def memoize(func):
     cache = func.cache = {}
+
     @functools.wraps(func)
     def memoized_func(*args, **kwargs):
         key = str(args) + str(kwargs)
         if key not in cache:
             cache[key] = func(*args, **kwargs)
         return cache[key]
+
     return memoized_func
 
 
 class Tree(object):
     """"""
+
     def __init__(self, newick_tree):
-        self.tree = Phylo.read(newick_tree,
-                               "newick",
-                               values_are_confidence=True,
-                               rooted=True)
+        self.tree = Phylo.read(
+            newick_tree, "newick", values_are_confidence=True, rooted=True
+        )
 
     @memoize
     def find_clades(self, tx):
@@ -73,7 +75,7 @@ class Tree(object):
             if not t:
                 tx.append("%s__?" % i)
             else:
-                assert(t.startswith("%s__" % i))
+                assert t.startswith("%s__" % i)
         return tx
 
     def lca(self, tx, percent_id):
