@@ -8,7 +8,8 @@ Codes: https://github.com/lanzen/CREST/tree/master/LCAClassifier/src/LCAClassifi
 import logging
 import re
 import sys
-from collections import defaultdict, OrderedDict
+from collections import OrderedDict, defaultdict
+
 from Bio import Phylo
 
 BLAST6 = [

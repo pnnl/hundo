@@ -16,12 +16,12 @@ import numpy as np
 import pandas as pd
 import plotly.figure_factory as ff
 import plotly.graph_objs as go
-import relatively
 from biom import parse_table
-from docutils.parsers.rst import directives
 from docutils.core import publish_file, publish_parts
+from docutils.parsers.rst import directives
 from plotly import offline
 
+import relatively
 
 STYLE = """
     <link rel="stylesheet" type="text/css" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css"/>
