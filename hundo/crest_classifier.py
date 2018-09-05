@@ -8,11 +8,24 @@ Codes: https://github.com/lanzen/CREST/tree/master/LCAClassifier/src/LCAClassifi
 import logging
 import re
 import sys
-from collections import defaultdict, OrderedDict
+from collections import OrderedDict, defaultdict
+
 from Bio import Phylo
 
-BLAST6 = ["qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart",
-          "qend", "sstart", "send", "evalue", "bitscore"]
+BLAST6 = [
+    "qseqid",
+    "sseqid",
+    "pident",
+    "length",
+    "mismatch",
+    "gapopen",
+    "qstart",
+    "qend",
+    "sstart",
+    "send",
+    "evalue",
+    "bitscore",
+]
 
 
 class Tree(object):
@@ -29,13 +42,26 @@ class Tree(object):
     SPECIES = 10
     SUBSPECIES = 11
 
-    depths = {ROOT: 'root', META: 'meta', DOMAIN: 'domain', SUPERKINGDOM: 'superkingdom',
-              KINGDOM: 'kingdom', PHYLUM: 'phylum', CLASS: 'class', ORDER: 'order',
-              FAMILY: 'family', GENUS: 'genus', SPECIES: 'species', SUBSPECIES: 'strain'}
+    depths = {
+        ROOT: "root",
+        META: "meta",
+        DOMAIN: "domain",
+        SUPERKINGDOM: "superkingdom",
+        KINGDOM: "kingdom",
+        PHYLUM: "phylum",
+        CLASS: "class",
+        ORDER: "order",
+        FAMILY: "family",
+        GENUS: "genus",
+        SPECIES: "species",
+        SUBSPECIES: "strain",
+    }
 
     def __init__(self, mapfile, trefile):
 
-        self.tree = Phylo.read(trefile, "newick", values_are_confidence=True, rooted=True)
+        self.tree = Phylo.read(
+            trefile, "newick", values_are_confidence=True, rooted=True
+        )
         self.root = self.tree.root
         self.names = {}
         self.node_names = {}
@@ -47,10 +73,12 @@ class Tree(object):
             self.node_ids[child.name] = child
 
         # reference sequence accessions
-        accession_re = [re.compile("\D\D\d\d\d\d\d\d\Z"),
-                       re.compile("\D\d\d\d\d\d\Z"),
-                       re.compile("\D\D\D\D\d\d\d\d\d\d\d\d\d\Z"),
-                       re.compile("\D\D\D\D\d\d\d\d\d\d\d\d\Z")]
+        accession_re = [
+            re.compile("\D\D\d\d\d\d\d\d\Z"),
+            re.compile("\D\d\d\d\d\d\Z"),
+            re.compile("\D\D\D\D\d\d\d\d\d\d\d\d\d\Z"),
+            re.compile("\D\D\D\D\d\d\d\d\d\d\d\d\Z"),
+        ]
 
         # Read nodes from .map file (id\t name\t cutoff)
         for line in mapfile:
@@ -64,11 +92,12 @@ class Tree(object):
             if n:
                 self.node_names[name] = n
                 # Unless this is just an accession, update node name and assignment min.
-                if similarity_cutoff >= 0 and \
-                    not (accession_re[0].match(name) or \
-                         accession_re[1].match(name) or \
-                         accession_re[2].match(name) or \
-                         accession_re[3].match(name)):
+                if similarity_cutoff >= 0 and not (
+                    accession_re[0].match(name)
+                    or accession_re[1].match(name)
+                    or accession_re[2].match(name)
+                    or accession_re[3].match(name)
+                ):
                     self.assignment_min[name] = similarity_cutoff
                     n.name = name
             else:
@@ -90,7 +119,7 @@ class Tree(object):
             return
 
     def add_node(self, nodename, parent, assignment_min=0):
-        #insert instead of append?
+        # insert instead of append?
         if nodename in self.node_names:
             logging.error("Node name '%s' is not unique - not added" % nodename)
             return None
@@ -185,14 +214,18 @@ class Tree(object):
         if node is not None:
             for clade in self.get_path(node):
                 depth = self.get_depth(clade)
-                if depth > Tree.META and depth < Tree.SUBSPECIES and \
-                    not depth == Tree.SUPERKINGDOM and not depth == Tree.KINGDOM:
+                if (
+                    depth > Tree.META
+                    and depth < Tree.SUBSPECIES
+                    and not depth == Tree.SUPERKINGDOM
+                    and not depth == Tree.KINGDOM
+                ):
 
                     if Tree.depths[depth][0] == "d":
                         abb = "k"
                     else:
                         abb = Tree.depths[depth][0]
-                    taxonomy[abb] = clade.name.replace(" ","_")
+                    taxonomy[abb] = clade.name.replace(" ", "_")
         return taxonomy
 
 
