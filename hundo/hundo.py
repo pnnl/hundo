@@ -5,6 +5,7 @@ import subprocess
 import sys
 from collections import OrderedDict
 import click
+
 # local imports
 import hundo.unite_classifier as unite_lca
 import hundo.crest_classifier as crest_lca
@@ -293,8 +294,10 @@ def run_download(database_dir, jobs, reference_database, dryrun, snakemake_args)
     "-i",
     "--input-dir",
     multiple=True,
-    help=("add directories in which to search for sample input file pairs "
-        "in addition to FASTQ_DIR; may be specified multiple times")
+    help=(
+        "add directories in which to search for sample input file pairs "
+        "in addition to FASTQ_DIR; may be specified multiple times"
+    ),
 )
 @click.option(
     "--prefilter-file-size",
@@ -338,6 +341,13 @@ def run_download(database_dir, jobs, reference_database, dryrun, snakemake_args)
     default=subprocess.check_output(["whoami"]).decode("utf-8").strip(),
     show_default=True,
     help="will show in footer of summary HTML document",
+)
+@click.option(
+    "--aligner",
+    type=click.Choice(choices=["blast", "vsearch"]),
+    default="blast",
+    show_default=True,
+    help="local aligner; `blast` is more sensitive while `vsearch` is much faster",
 )
 @click.option(
     "-t",
@@ -503,13 +513,6 @@ def run_download(database_dir, jobs, reference_database, dryrun, snakemake_args)
     show_default=True,
     help="reflects the difference between OTU clusters to reduce ambiguous assignment",
 )
-@click.option(
-    "--aligner",
-    type=str,
-    default="blast",
-    show_default=True,
-    help="pick which aligner that you would like to use, blast or vsearch. default:blast",
-)
 @click.argument("snakemake_args", nargs=-1, type=click.UNPROCESSED)
 def run_annotate(
     fastq_dir,
@@ -520,6 +523,7 @@ def run_annotate(
     no_conda,
     dryrun,
     author,
+    aligner,
     threads,
     database_dir,
     filter_adapters,
@@ -541,7 +545,6 @@ def run_annotate(
     blast_minimum_bitscore,
     blast_top_fraction,
     read_identity_requirement,
-    aligner,
     snakemake_args,
 ):
     """
