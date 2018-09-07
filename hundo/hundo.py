@@ -7,12 +7,7 @@ from collections import OrderedDict
 
 import click
 
-import hundo.crest_classifier as crest_lca
-# local imports
-import hundo.unite_classifier as unite_lca
 from hundo import __version__
-from hundo.blast import parse_blasthits, parse_vsearchhits
-from hundo.fasta import format_fasta_record, read_fasta
 
 logging.basicConfig(
     level=logging.INFO,
