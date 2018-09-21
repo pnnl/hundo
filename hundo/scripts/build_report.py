@@ -60,9 +60,7 @@ def build_uri(file, file_type=None, default_encoding="utf8"):
         default_encoding = encoding
     with open(file, mode="rb") as fh:
         fdata = base64.b64encode(fh.read())
-    return (
-        f'data:{file_type};charset={default_encoding};filename={fname};base64,{fdata.decode("utf-8")}'
-    )
+    return f'data:{file_type};charset={default_encoding};filename={fname};base64,{fdata.decode("utf-8")}'
 
 
 def parse_biom(biom):
@@ -155,12 +153,7 @@ def build_summary_table(raw, biom_df, div_df, omitted=None):
         visible = [True] + ["legendonly"] * 3
     for i, metric in enumerate(header[1:]):
         plot_data.append(
-            go.Bar(
-                x=df.Sample,
-                y=df[metric],
-                name=metric,
-                visible=visible[i],
-            )
+            go.Bar(x=df.Sample, y=df[metric], name=metric, visible=visible[i])
         )
     layout = dict(
         title="Counts Per Sample By Stage",
@@ -256,7 +249,9 @@ def build_taxonomy_plot(txt, value_cols, height=900):
     df[hierarchy] = df[hierarchy].fillna("NA")
     df[value_cols] = df[value_cols].fillna(0)
     df = df[hierarchy + value_cols]
-    dfs = relatively.get_dfs_across_hierarchy(df, hierarchy, value_cols, reorder=None)
+    dfs = relatively.get_dfs_across_hierarchy(
+        df, hierarchy, value_cols, reorder=None, dependent="; "
+    )
     fig = relatively.get_abundance_figure_from_dfs(
         dfs, hierarchy, "Assigned Taxonomy Per Sample", height=height
     )
@@ -323,7 +318,19 @@ def build_attachment(zip):
 
 
 def main(
-    biom, txt, zip, env, params, eeplot, r1quals, raw, omitted, html, author, version, samples
+    biom,
+    txt,
+    zip,
+    env,
+    params,
+    eeplot,
+    r1quals,
+    raw,
+    omitted,
+    html,
+    author,
+    version,
+    samples,
 ):
     # resolve the file patterns
     eeplot = glob(eeplot, recursive=False)
