@@ -1,6 +1,5 @@
-example/annotation_references
-example/mothur_sop_results
-example/example_its_results
+example/*references
+example/*results
 example/additional_data
 .snakemake
 
