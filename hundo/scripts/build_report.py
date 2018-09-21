@@ -110,6 +110,7 @@ def make_div(figure_or_data, include_plotlyjs=False, show_link=False, div_id=Non
         div = f"""{div.partition(".then(function ()")[0]}</script>"""
     if div_id:
         import re
+
         try:
             existing_id = re.findall(r'id="(.*?)"|$', div)[0]
             div = div.replace(existing_id, div_id)
