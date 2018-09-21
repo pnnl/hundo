@@ -81,7 +81,7 @@ def run_lca(
     import statistics
     import hundo.unite_classifier as unite_lca
     import hundo.crest_classifier as crest_lca
-    from hundo.blast import parse_blasthits
+    from hundo.blast import parse_blasthits, parse_vsearchhits
     from hundo.fasta import read_fasta, format_fasta_record
 
     def print_unite(name, seq, tx, fa, tsv):
