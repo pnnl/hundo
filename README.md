@@ -112,3 +112,9 @@ And counts per sample at varying stages of pre-processing:
 Taxonomies are also summarized per sample across phylum, class, and order:
 
 ![plot](docs/_static/taxonomy_summary.png)
+
+# Citing
+
+Cite this as:
+
+> Brown J, Zavoshy N, Brislawn CJ, McCue LA. (2018) Hundo: a Snakemake workflow for microbial community sequence data. PeerJ Preprints 6:e27272v1 https://doi.org/10.7287/peerj.preprints.27272v1

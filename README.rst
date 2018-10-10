@@ -121,6 +121,14 @@ sequence quality, counts per sample at varying stages of pre-processing, and
 summarized taxonomic composition per sample across phylum, class, and
 order.
 
+Citing
+======
+
+Cite this as:
+
+    Brown J, Zavoshy N, Brislawn CJ, McCue LA. (2018) Hundo: a Snakemake workflow for microbial community sequence data. PeerJ Preprints 6:e27272v1 https://doi.org/10.7287/peerj.preprints.27272v1
+
+
 .. |DOI| image:: https://zenodo.org/badge/83449413.svg
    :target: https://zenodo.org/badge/latestdoi/83449413
 .. |Documentation Status| image:: https://readthedocs.org/projects/hundo/badge/?version=latest
