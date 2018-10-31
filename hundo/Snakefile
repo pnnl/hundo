@@ -247,7 +247,7 @@ def md5(fname):
 
 PROTOCOL_VERSION = subprocess.check_output("hundo --version", shell=True).decode("utf-8").strip()
 if config.get("workflow") == "download":
-    SAMPLES, OMITTED = {"placeholder": {"r1": "placeholder", "r2": "placeholder"}}
+    SAMPLES, OMITTED = ({"placeholder": {"r1": "placeholder", "r2": "placeholder"}}, dict())
 else:
     SAMPLES, OMITTED = get_sample_files(
         config.get("fastq_dir"), config.get("prefilter_file_size", 100000)

@@ -192,7 +192,7 @@ def get_snakefile():
     help="use at most this many cores in parallel",
 )
 @click.option(
-    "--rd",
+    "-rd",
     "--reference-database",
     default="silva",
     type=click.Choice(["silva", "greengenes", "unite"]),
