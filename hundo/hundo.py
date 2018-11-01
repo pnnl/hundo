@@ -285,7 +285,7 @@ def run_download(database_dir, jobs, reference_database, dryrun, snakemake_args)
     context_settings=dict(ignore_unknown_options=True),
     short_help="run annotation protocol",
 )
-@click.argument("fastq-dir", type=click.Path(exists=True))
+@click.argument("fastq-dir")
 @click.option(
     "-i",
     "--input-dir",
