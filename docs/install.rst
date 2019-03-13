@@ -24,11 +24,10 @@ To update to the newest version of Hundo, run
 Alternatively, if you do not want any new executables in your environment
 you can install into a new conda environment, e.g. hundo_env::
 
-    conda create --name hundo_env python>=3.6 \
-        click pyyaml snakemake>=5.1.4 biopython
-    source activate hundo_env
+    conda create --name hundo_env python=3 click pyyaml snakemake biopython
+    conda activate hundo_env
     pip install hundo
 
 To leave the environment::
 
-    source deactivate
+    conda deactivate
