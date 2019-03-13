@@ -857,8 +857,7 @@ rule newick_tree:
         "combined_group"
     shell:
         """
-        export OMP_NUM_THREADS={threads} && \
-            FastTreeMP -nt -gamma -spr 4 -log {log} -quiet {input} > {output}
+        export OMP_NUM_THREADS={threads} && FastTreeMP -nt -gamma -spr 4 -log {log} -quiet {input} > {output} || fasttree -nt -gamma -spr 4 -log {log} -quiet {input} > {output}
         """
 
 
