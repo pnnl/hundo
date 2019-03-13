@@ -17,8 +17,7 @@ import pandas as pd
 import plotly.figure_factory as ff
 import plotly.graph_objs as go
 from biom import parse_table
-from docutils.core import publish_file, publish_parts
-from docutils.parsers.rst import directives
+from docutils.core import publish_file
 from plotly import offline
 
 import relatively
@@ -116,7 +115,7 @@ def make_div(figure_or_data, include_plotlyjs=False, show_link=False, div_id=Non
             div = div.replace(existing_id, div_id)
         except IndexError:
             pass
-    return div
+    return div.replace("\n", " ")
 
 
 def build_summary_table(raw, biom_df, div_df, omitted=None):
@@ -253,7 +252,7 @@ def build_quality_plot(r1_quals):
 
 
 def build_taxonomy_plot(txt, value_cols, height=900):
-    df = pd.read_table(txt)
+    df = pd.read_csv(txt, sep="\t")
     levels = ["kingdom", "phylum", "class", "order", "family", "genus", "species"]
     df[levels] = df["taxonomy"].str.split(",", expand=True)
     # remove "k__", etc., from taxonomies
@@ -352,6 +351,7 @@ def main(
     raw = glob(raw, recursive=False)
 
     biom_df, otu_summary_table = parse_biom(biom)
+    biom_df = biom_df.to_dense()
     div_idx = relatively.calculate_diversity(
         biom_df,
         biom_df.index,
