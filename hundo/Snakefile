@@ -186,7 +186,7 @@ def get_run_reference_chimera_filter_inputs(wildcards):
         db = REFFASTA
     else:
         db = config.get("reference_chimera_filter")
-    if config.get("pipeline", "ASV"):
+    if (config.get("pipeline") == "ASV"):
         fasta = "zOTUs-uchime3.fasta"
     elif config.get("denovo_chimera_filter", True):
         fasta = "chimera-filtered_denovo.fasta"
@@ -993,7 +993,8 @@ rule aggregate_run_parameters:
         blast_minimum_bitscore = config.get("blast_minimum_bitscore"),
         blast_top_fraction = config.get("blast_top_fraction"),
         read_identity_requirement = config.get("read_identity_requirement"),
-        aligner = config.get("aligner")
+        aligner = config.get("aligner"),
+        pipeline = config.get("pipeline")
     run:
         with open(output.txt, "w") as fh:
             print("fastq_dir:", params.fastq_dir, sep=" ", file=fh)
@@ -1014,6 +1015,7 @@ rule aggregate_run_parameters:
             print("percent_of_allowable_difference:", params.percent_of_allowable_difference, sep=" ", file=fh)
             print("reference_database:", params.reference_database, sep=" ", file=fh)
             print("aligner:", params.aligner, sep=" ", file=fh)
+            print("pipeline:", params.pipeline, sep=" ", file=fh)
             print("blast_minimum_bitscore:", params.blast_minimum_bitscore, sep=" ", file=fh)
             print("blast_top_fraction:", params.blast_top_fraction, sep=" ", file=fh)
             print("read_identity_requirement:", params.read_identity_requirement, sep=" ", file=fh)
