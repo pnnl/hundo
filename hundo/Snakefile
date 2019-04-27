@@ -186,7 +186,9 @@ def get_run_reference_chimera_filter_inputs(wildcards):
         db = REFFASTA
     else:
         db = config.get("reference_chimera_filter")
-    if config.get("denovo_chimera_filter", True):
+    if config.get("pipeline", "ASV"):
+        fasta = "zOTUs-uchime3.fasta"
+    elif config.get("denovo_chimera_filter", True):
         fasta = "chimera-filtered_denovo.fasta"
     elif float(config.get("read_identity_requirement", 0.97)) * 100 < 99:
         fasta = "preclustered.fasta"
@@ -583,124 +585,197 @@ rule dereplicate_sequences:
             --threads {threads} -log {log} --uc {output.uc}
         """
 
-
-rule precluster_sequences:
-    input:
-        "dereplicated-sequences.fasta"
-    output:
-        fa = temp("preclustered.fasta"),
-        uc = temp("preclustered.uclust")
-    params:
-        id = min((100 - float(config.get("percent_of_allowable_difference", 3))) / 100, 1.00)
-    conda:
-        CONDAENV
-    log:
-        "logs/precluster.log"
-    threads:
-        config.get("threads", 1)
-    group:
-        "combined_group"
-    shell:
-        """
-        vsearch --threads {threads} --cluster_size {input} \
-            --id {params.id} --strand plus --sizein --sizeout \
-            --centroids {output.fa} --uc {output.uc}
-        """
-
-
-rule run_denovo_chimera_filter:
-    input:
-        "preclustered.fasta"
-    output:
-        temp("chimera-filtered_denovo.fasta")
-    conda:
-        CONDAENV
-    log:
-        "logs/chimera-filtered_denovo.log"
-    threads:
-        config.get("threads", 1)
-    group:
-        "combined_group"
-    shell:
-        """
-        vsearch --uchime_denovo {input} --nonchimeras {output} \
-            --strand plus --sizein --sizeout --threads {threads} \
-            --log {log}
-        """
+if config.get("pipeline") == "OTU":
+    rule precluster_sequences:
+        input:
+            "dereplicated-sequences.fasta"
+        output:
+            fa = temp("preclustered.fasta"),
+            uc = temp("preclustered.uclust")
+        params:
+            id = min((100 - float(config.get("percent_of_allowable_difference", 3))) / 100, 1.00)
+        conda:
+            CONDAENV
+        log:
+            "logs/precluster.log"
+        threads:
+            config.get("threads", 1)
+        group:
+            "combined_group"
+        shell:
+            """
+            vsearch --threads {threads} --cluster_size {input} \
+                --id {params.id} --strand plus --sizein --sizeout \
+                --centroids {output.fa} --uc {output.uc}
+            """
 
 
-rule run_reference_chimera_filter:
-    input:
-        unpack(get_run_reference_chimera_filter_inputs)
-    output:
-        temp("chimera-filtered_reference.fasta")
-    conda:
-        CONDAENV
-    log:
-        "logs/chimera-filtered_reference.log"
-    threads:
-        config.get("threads", 1)
-    group:
-        "combined_group"
-    shell:
-        """
-        vsearch --uchime_ref {input.fasta} --nonchimeras {output} \
-            --strand plus --sizein --sizeout --db {input.db} \
-            --threads {threads} --log {log}
-        """
+    rule run_denovo_chimera_filter:
+        input:
+            "preclustered.fasta"
+        output:
+            temp("chimera-filtered_denovo.fasta")
+        conda:
+            CONDAENV
+        log:
+            "logs/chimera-filtered_denovo.log"
+        threads:
+            config.get("threads", 1)
+        group:
+            "combined_group"
+        shell:
+            """
+            vsearch --uchime_denovo {input} --nonchimeras {output} \
+                --strand plus --sizein --sizeout --threads {threads} \
+                --log {log}
+            """
 
 
-rule extract_filtered_sequences:
-    # Extract all non-chimeric, non-singleton sequences, dereplicated
-    input:
-        filter_fa = "dereplicated-sequences.fasta",
-        uc = "preclustered.uclust",
-        keep_fa = "chimera-filtered_reference.fasta"
-    output:
-        temp("nonchimeric-nonsingleton.fasta")
-    group:
-        "combined_group"
-    run:
-        filter_fastas(input.filter_fa, input.uc, input.keep_fa, output[0])
+    rule run_reference_chimera_filter:
+        input:
+            unpack(get_run_reference_chimera_filter_inputs)
+        output:
+            temp("chimera-filtered_reference.fasta")
+        conda:
+            CONDAENV
+        log:
+            "logs/chimera-filtered_reference.log"
+        threads:
+            config.get("threads", 1)
+        group:
+            "combined_group"
+        shell:
+            """
+            vsearch --uchime_ref {input.fasta} --nonchimeras {output} \
+                --strand plus --sizein --sizeout --db {input.db} \
+                --threads {threads} --log {log}
+            """
 
 
-rule pull_seqs_from_samples_with_filtered_sequences:
-    # Extract all non-chimeric, non-singleton sequences in each sample
-    input:
-        filter_fa = "all-sequences.fasta",
-        uc = "dereplicated.uclust",
-        keep_fa = "nonchimeric-nonsingleton.fasta"
-    output:
-        temp("all-sequences_filtered.fasta")
-    group:
-        "combined_group"
-    run:
-        filter_fastas(input.filter_fa, input.uc, input.keep_fa, output[0])
+    rule extract_filtered_sequences:
+        # Extract all non-chimeric, non-singleton sequences, dereplicated
+        input:
+            filter_fa = "dereplicated-sequences.fasta",
+            uc = "preclustered.uclust",
+            keep_fa = "chimera-filtered_reference.fasta"
+        output:
+            temp("nonchimeric-nonsingleton.fasta")
+        group:
+            "combined_group"
+        run:
+            filter_fastas(input.filter_fa, input.uc, input.keep_fa, output[0])
 
 
-rule cluster_sequences:
-    input:
-        # get_cluster_sequences_input
-        "all-sequences_filtered.fasta"
-    output:
-        fa = "OTU.fasta"
-    params:
-        minsize = config.get("minimum_sequence_abundance", 2),
-        otu_id_pct = (100 - float(config.get("percent_of_allowable_difference", 3))) / 100.
-    conda:
-        CONDAENV
-    log:
-        "logs/cluster_sequences.log"
-    threads:
-        config.get("threads", 1)
-    group:
-        "combined_group"
-    shell:
-        """
-        vsearch --cluster_size {input} --centroids {output.fa} \
-            --relabel OTU_ --id {params.otu_id_pct} --log {log} \
-            --sizein --strand plus --threads {threads}
-        """
+    rule pull_seqs_from_samples_with_filtered_sequences:
+        # Extract all non-chimeric, non-singleton sequences in each sample
+        input:
+            filter_fa = "all-sequences.fasta",
+            uc = "dereplicated.uclust",
+            keep_fa = "nonchimeric-nonsingleton.fasta"
+        output:
+            temp("all-sequences_filtered.fasta")
+        group:
+            "combined_group"
+        run:
+            filter_fastas(input.filter_fa, input.uc, input.keep_fa, output[0])
+
+
+    rule cluster_sequences:
+        input:
+            # get_cluster_sequences_input
+            "all-sequences_filtered.fasta"
+        output:
+            fa = "OTU.fasta"
+        params:
+            minsize = config.get("minimum_sequence_abundance", 2),
+            otu_id_pct = (100 - float(config.get("percent_of_allowable_difference", 3))) / 100.
+        conda:
+            CONDAENV
+        log:
+            "logs/cluster_sequences.log"
+        threads:
+            config.get("threads", 1)
+        group:
+            "combined_group"
+        shell:
+            """
+            vsearch --cluster_size {input} --centroids {output.fa} \
+                --relabel OTU_ --id {params.otu_id_pct} --log {log} \
+                --sizein --strand plus --threads {threads}
+            """
+# Pipeline for building ASVs
+else:
+    rule denoise_sequences:
+        input:
+            "dereplicated-sequences.fasta"
+        output:
+            fa = temp("zOTUs-all.fasta"),
+        conda:
+            CONDAENV
+        log:
+            "logs/cluster-unoise.log"
+        threads:
+            config.get("threads", 1)
+        group:
+            "combined_group"
+        shell:
+            """
+            vsearch --threads {threads} --cluster_unoise {input} \
+                --strand plus --sizein --sizeout \
+                --centroids {output.fa} --log {log}
+            """
+
+
+    rule run_denovo_chimera_filter:
+        input:
+            "zOTUs-all.fasta"
+        output:
+            temp("zOTUs-uchime3.fasta")
+        conda:
+            CONDAENV
+        log:
+            "logs/chimera-filtered_uchime3_denovo.log"
+        group:
+            "combined_group"
+        shell:
+            """
+            vsearch --uchime3_denovo {input} --nonchimeras {output} \
+                --strand plus --sizein --sizeout --log {log}
+            """
+
+
+    rule run_reference_chimera_filter:
+        input:
+            unpack(get_run_reference_chimera_filter_inputs)
+        output:
+            temp("zOTUs-uchime3-uchime-ref.fasta")
+        conda:
+            CONDAENV
+        log:
+            "logs/chimera-filtered_reference.log"
+        threads:
+            config.get("threads", 1)
+        group:
+            "combined_group"
+        shell:
+            """
+            vsearch --uchime_ref {input.fasta} --nonchimeras {output} \
+                --strand plus --sizein --sizeout --db {input.db} \
+                --threads {threads} --log {log}
+            """
+
+
+    rule rename_zOTUs_to_OTUs:
+        input:
+            "zOTUs-uchime3-uchime-ref.fasta"
+        output:
+            "OTU.fasta"
+        group:
+            "combined_group"
+        shell:
+            """
+            cp {input} {output}
+            """
 
 
 if config.get("aligner") == "blast":
@@ -779,29 +854,49 @@ rule compute_lca:
             {output.tsv}
         """
 
-
-rule compile_counts:
-    input:
-        seqs = "all-sequences.fasta",
-        db = "OTU_tax.fasta"
-    output:
-        tsv = "OTU.txt"
-    params:
-        id_req = config.get("read_identity_requirement", 0.80),
-        minqt = config.get("vsearch_minqt", 0.80)
-    conda:
-        CONDAENV
-    threads:
-        config.get("threads", 1)
-    group:
-        "combined_group"
-    shell:
-        """
-        vsearch --usearch_global {input.seqs} \
-            --db {input.db} --id {params.id_req} \
-            --otutabout {output.tsv} --sizein --strand plus \
-            --threads {threads}
-        """
+if config.get("pipeline") == "OTU":
+    rule compile_counts:
+        input:
+            seqs = "all-sequences.fasta",
+            db = "OTU_tax.fasta"
+        output:
+            tsv = "OTU.txt"
+        params:
+            id_req = config.get("read_identity_requirement", 0.80),
+            minqt = config.get("vsearch_minqt", 0.80)
+        conda:
+            CONDAENV
+        threads:
+            config.get("threads", 1)
+        group:
+            "combined_group"
+        shell:
+            """
+            vsearch --usearch_global {input.seqs} \
+                --db {input.db} --id {params.id_req} \
+                --otutabout {output.tsv} --sizein --strand plus \
+                --threads {threads}
+            """
+else:
+    rule compile_counts:
+        input:
+            seqs = "all-sequences.fasta",
+            db = "OTU_tax.fasta"
+        output:
+            tsv = "OTU.txt"
+        conda:
+            CONDAENV
+        threads:
+            config.get("threads", 1)
+        group:
+            "combined_group"
+        shell:
+            """
+            vsearch --usearch_global {input.seqs} \
+                --db {input.db} --id 1.0 \
+                --otutabout {output.tsv} --sizein --strand plus \
+                --threads {threads}
+            """
 
 
 rule create_biom_from_txt:
