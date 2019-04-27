@@ -31,13 +31,6 @@ def cli(obj):
         https://github.com/pnnl/hundo/issues
     """
 
-@click.option(
-    "--pipeline",
-    type=str,
-    default="OTU",
-    show_default=True,
-    help="cluster reads into OTUs or denoise reads into ASVs. This also changes other parts of the pipeline. default:OTU",
-)
 @cli.command("lca", short_help="runs LCA across aligned hits")
 @click.argument("fasta", type=click.Path(exists=True))
 @click.argument("aligned_hits", type=click.File("r"))
@@ -352,6 +345,13 @@ def run_download(database_dir, jobs, reference_database, dryrun, snakemake_args)
     help="local aligner; `blast` is more sensitive while `vsearch` is much faster",
 )
 @click.option(
+    "--pipeline",
+    type=click.Choice(choices=["OTU", "ASV"]),
+    default="OTU",
+    show_default=True,
+    help="cluster to make OTUs or denoise to make ASVs. This also changes other parts of the pipeline",
+)
+@click.option(
     "-t",
     "--threads",
     default=multiprocessing.cpu_count(),
@@ -526,6 +526,7 @@ def run_annotate(
     dryrun,
     author,
     aligner,
+    pipeline,
     threads,
     database_dir,
     filter_adapters,
@@ -609,6 +610,7 @@ def run_annotate(
         "read_identity_requirement={read_identity_requirement} "
         "prefilter_file_size={prefilter_file_size} "
         "aligner={aligner} "
+        "pipeline={pipeline} "
         "no_temp_declared={no_temp_declared} {add_args} "
         "{args}"
     ).format(
@@ -642,6 +644,7 @@ def run_annotate(
         read_identity_requirement=read_identity_requirement,
         prefilter_file_size=prefilter_file_size,
         aligner=aligner,
+        pipeline=pipeline,
         no_temp_declared=no_temp_declared,
         add_args="" if snakemake_args and snakemake_args[0].startswith("-") else "--",
         args=" ".join(snakemake_args),
