@@ -31,7 +31,13 @@ def cli(obj):
         https://github.com/pnnl/hundo/issues
     """
 
-
+@click.option(
+    "--pipeline",
+    type=str,
+    default="OTU",
+    show_default=True,
+    help="cluster reads into OTUs or denoise reads into ASVs. This also changes other parts of the pipeline. default:OTU",
+)
 @cli.command("lca", short_help="runs LCA across aligned hits")
 @click.argument("fasta", type=click.Path(exists=True))
 @click.argument("aligned_hits", type=click.File("r"))
