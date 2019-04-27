@@ -647,7 +647,7 @@ if config.get("pipeline") == "OTU":
         shell:
             """
             vsearch --uchime_ref {input.fasta} --nonchimeras {output} \
-                --strand plus --sizein --sizeout --db {input.db} \
+                --sizein --sizeout --db {input.db} \
                 --threads {threads} --log {log}
             """
 
@@ -740,7 +740,7 @@ else:
         shell:
             """
             vsearch --uchime3_denovo {input} --nonchimeras {output} \
-                --strand plus --sizein --sizeout --log {log}
+                --sizein --sizeout --log {log}
             """
 
 
@@ -760,7 +760,7 @@ else:
         shell:
             """
             vsearch --uchime_ref {input.fasta} --nonchimeras {output} \
-                --strand plus --sizein --sizeout --db {input.db} \
+                --sizein --sizeout --db {input.db} \
                 --threads {threads} --log {log}
             """
 
