@@ -626,7 +626,7 @@ if config.get("pipeline") == "OTU":
         shell:
             """
             vsearch --uchime_denovo {input} --nonchimeras {output} \
-                --strand plus --sizein --sizeout --threads {threads} \
+                --sizein --sizeout --threads {threads} \
                 --log {log}
             """
 
