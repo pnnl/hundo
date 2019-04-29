@@ -721,7 +721,7 @@ else:
         shell:
             """
             vsearch --threads {threads} --cluster_unoise {input} \
-                --strand plus --sizein --sizeout \
+                --strand plus --sizein --sizeout --relabel_md5 \
                 --centroids {output.fa} --log {log}
             """
 
