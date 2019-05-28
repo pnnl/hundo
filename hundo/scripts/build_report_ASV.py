@@ -73,7 +73,7 @@ def parse_biom(biom):
         bt = parse_table(fh)
         df = bt.to_dataframe()
         otu_df = [
-            ["Samples", "OTUs", "OTU Total Count", "OTU Table Density"],
+            ["Samples", "ASVs", "ASV Total Count", "ASV Table Density"],
             [
                 bt.length("sample"),
                 bt.length("observation"),
@@ -120,7 +120,7 @@ def make_div(figure_or_data, include_plotlyjs=False, show_link=False, div_id=Non
 
 def build_summary_table(raw, biom_df, div_df, omitted=None):
     # sample summary table
-    header = ["Sample", "Raw", "Filtered", "Merged", "In OTUs"]
+    header = ["Sample", "Raw", "Filtered", "Merged", "In ASVs"]
     count_data = []
     omit = []
     if omitted:
@@ -406,7 +406,7 @@ Sequence Quality
     {quality_plot}
     {ee_plot}
 
-OTUs
+ASVs
 ****
 
 .. raw:: html
@@ -428,7 +428,8 @@ Methods
 -------
 
 ``hundo`` wraps a number of functions and its exact steps are
-dependent upon a given user's configuration.
+dependent upon a given user's configuration. In this case, the
+ASV pipeline was used.
 
 Paired-end sequence reads are quality trimmed and can be trimmed of
 adapters and filtered of contaminant sequences using BBDuk2 of the
@@ -437,26 +438,22 @@ VSEARCH_ then aggregated into a single FASTA file with headers
 describing the origin and count of the sequence.
 
 Prior to creating clusters, reads are filtered again based on expected
-error rates:
+error rates.
 
-To create clusters, the aggregated, merged reads are dereplicated to
-remove singletons by default using VSEARCH. Sequences are preclustered
-into centroids using VSEARCH to accelerate chimera filtering. Chimera
-filtering is completed in two steps: *de novo* and then reference
+In order to create ASVs, the aggregated, merged reads are dereplicated
+and denoised using cluster_unoise as implemented in VSEARCH_. Chimera
+filtering is completed in two steps: uchime3 *de novo* and then reference
 based. The reference by default is the entire annotation database.
-Following chimera filtering, sequences are placed into clusters using
-distance-based, greedy cluster with VSEARCH based on the allowable
-percent difference of the configuration.
 
-After OTU sequences have been determined, BLAST_ or VSEARCH is used to align
+After ASV sequences have been determined, BLAST_ or VSEARCH is used to align
 sequences to the reference database. Reference databases for 16S were curated
 by the CREST_ team and hundo incorporates the CREST LCA method. ITS databases
 are maintained by UNITE_.
 
-Counts are assigned to OTUs using the global alignment method of
-VSEARCH, which outputs the final OTU table as a tab-delimited text
-file. The Biom_ command line tool is used to convert the tab table
-to biom.
+Counts are assigned to ASVs using the global alignment method of
+VSEARCH at 99% identity, which outputs the final ASV table as a
+tab-delimited text file. The Biom_ command line tool is used to convert the
+tab table to biom.
 
 Multiple alignment of sequences is completed using MAFFT_.
 A tree based on the aligned sequences is built using FastTree2_.
@@ -505,27 +502,27 @@ Attached
 
 The zip archive contains the following files:
 
-OTU.biom
+ASV.biom
 ````````
 
 Biom table with raw counts per sample and their associated
 taxonomic assignment formatted to be compatible with downstream tools
 like phyloseq_.
 
-OTU.fasta
+ASV.fasta
 `````````
 
-Representative DNA sequences of each OTU.
+Representative DNA sequences of each ASV.
 
-OTU.tree
+ASV.tree
 ````````
 
-Newick tree representation of aligned OTU sequences.
+Newick tree representation of aligned ASV sequences.
 
-OTU.txt
+ASV.txt
 ```````
 
-Tab-delimited text table with columns OTU ID, a column for each sample,
+Tab-delimited text table with columns ASV ID, a column for each sample,
 and taxonomy assignment in the final column as a comma delimited list.
 
 
@@ -535,10 +532,10 @@ Other Result Files
 Other files that may be needed, but that are not included in the
 attached archive include:
 
-OTU_aligned.fasta
+ASV_aligned.fasta
 `````````````````
 
-OTU sequences after alignment using MAFFT.
+ASV sequences after alignment using MAFFT.
 
 all-sequences.fasta
 ```````````````````
@@ -550,7 +547,7 @@ resulting from dereplication.
 blast-hits.txt
 ``````````````
 
-The BLAST assignments per OTU sequence.
+The BLAST assignments per ASV sequence.
 
 Downloads
 ---------
