@@ -893,7 +893,7 @@ else:
         shell:
             """
             vsearch --usearch_global {input.seqs} \
-                --db {input.db} --id 1.0 \
+                --db {input.db} --id 0.99 \
                 --otutabout {output.tsv} --sizein --strand plus \
                 --threads {threads}
             """
