@@ -958,7 +958,10 @@ rule newick_tree:
 
 rule make_deliverables_archive:
     input:
-        "OTU.biom", "OTU.fasta", "OTU.tree", "OTU.txt", "ASV.biom", "ASV.fasta", "ASV.tree", "ASV.txt"
+        biom = "%s.biom" % config.get("pipeline"),
+        fasta = "%s.fasta" % config.get("pipeline"),
+        tree = "%s.tree" % config.get("pipeline"),
+        txt = "%s.txt" % config.get("pipeline")
     output:
         "hundo_results.zip"
     conda:
@@ -966,7 +969,7 @@ rule make_deliverables_archive:
     group:
         "combined_group"
     shell:
-        "zip {output} {input}"
+        "zip {output} {input.biom} {input.fasta} {input.tree} {input.txt} "
 
 
 rule aggregate_run_parameters:
@@ -1026,11 +1029,13 @@ rule build_report:
         report_script = os.path.join(
             os.path.dirname(os.path.abspath(workflow.snakefile)),
             "scripts",
-            "build_report_%s.py" % config.get("pipeline")
-        ),
+            "build_report_OTU.py"
+        ) if config.get("pipeline") == "OTU" else os.path.join(
+            os.path.dirname(os.path.abspath(workflow.snakefile)),
+            "scripts",
+            "build_report_ASV.py"),
         biom = "%s.biom" % config.get("pipeline"),
         txt = "%s.txt" % config.get("pipeline"),
-        pipeline = config.get("pipeline"),
         archive = "hundo_results.zip",
         params = "PARAMS.txt",
         env = CONDAENV,
@@ -1068,7 +1073,6 @@ rule build_report:
     shell:
         """
         python {input.report_script} --biom {input.biom} --txt {input.txt} \
-            --pipeline {input.pipeline} \
             --zip {input.archive} --env {input.env} --params {input.params} \
             --eeplot 'logs/*_merged_filtered_eestats.txt' \
             --r1quals 'logs/*_R1_eestats.txt' \
