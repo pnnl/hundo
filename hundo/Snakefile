@@ -760,7 +760,7 @@ else:
         shell:
             """
             vsearch --uchime_ref {input.fasta} --nonchimeras {output} \
-                --sizein --sizeout --db {input.db} \
+                --xsize --db {input.db} \
                 --threads {threads} --log {log}
             """
 
