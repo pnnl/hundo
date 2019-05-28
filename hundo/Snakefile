@@ -769,7 +769,7 @@ else:
         input:
             "zOTUs-uchime3-uchime-ref.fasta"
         output:
-            "OTU.fasta"
+            "ASV.fasta"
         group:
             "combined_group"
         shell:
@@ -781,7 +781,7 @@ else:
 if config.get("aligner") == "blast":
     rule run_aligner:
         input:
-            fasta = "OTU.fasta",
+            fasta = "%s.fasta" % config.get("pipeline"),
             # force download
             db = BLASTREF,
             db_fa = REFFASTA
@@ -807,7 +807,7 @@ if config.get("aligner") == "blast":
 else:
     rule run_aligner:
         input:
-            fasta = "OTU.fasta",
+            fasta = "%s.fasta" % config.get("pipeline"),
             db = BLASTREF,
             db_fa = REFFASTA
         output:
@@ -832,13 +832,13 @@ else:
 
 rule compute_lca:
     input:
-        fasta = "OTU.fasta",
+        fasta = "%s.fasta" % config.get("pipeline"),
         hits = "local-hits.txt",
         map = REFMAP,
         tre = REFTRE
     output:
-        fasta = "OTU_tax.fasta",
-        tsv = temp("OTU_assignments.tsv")
+        fasta = "%s_tax.fasta" % config.get("pipeline"),
+        tsv = temp("tax_assignments.tsv")
     params:
         min_score = config.get("blast_minimum_bitscore", 125),
         min_pid = config.get("min_pid", .85),
@@ -881,9 +881,9 @@ else:
     rule compile_counts:
         input:
             seqs = "all-sequences.fasta",
-            db = "OTU_tax.fasta"
+            db = "ASV_tax.fasta"
         output:
-            tsv = "OTU.txt"
+            tsv = "ASV.txt"
         conda:
             CONDAENV
         threads:
@@ -901,9 +901,9 @@ else:
 
 rule create_biom_from_txt:
     input:
-        "OTU.txt"
+        txt = "%s.txt" % config.get("pipeline")
     output:
-        "OTU.biom"
+        biom = "%s.biom" % config.get("pipeline")
     shadow:
         "shallow"
     conda:
@@ -912,17 +912,17 @@ rule create_biom_from_txt:
         "combined_group"
     shell:
         '''
-        sed 's|\"||g' {input} | sed 's|\,|\;|g' > OTU_converted.txt
-        biom convert -i OTU_converted.txt -o {output} --to-json \
+        sed 's|\"||g' {input.txt} | sed 's|\,|\;|g' > featured_converted.txt
+        biom convert -i featured_converted.txt -o {output.biom} --to-json \
             --process-obs-metadata sc_separated --table-type "OTU table"
         '''
 
 
 rule multiple_align:
     input:
-        "OTU.fasta"
+        fasta = "%s.fasta" % config.get("pipeline")
     output:
-        "OTU_aligned.fasta"
+        msa = "%s_aligned.fasta" % config.get("pipeline")
     threads:
         # mafft (via conda) is single-threaded on macOS
         config.get("threads", 1)
@@ -933,15 +933,15 @@ rule multiple_align:
     shell:
         """
         mafft --auto --thread {threads} --quiet --maxiterate 1000 \
-            --globalpair {input} > {output}
+            --globalpair {input.fasta} > {output.msa}
         """
 
 
 rule newick_tree:
     input:
-        "OTU_aligned.fasta"
+        msa = "%s_aligned.fasta" % config.get("pipeline")
     output:
-        "OTU.tree"
+        tre = "%s.tree" % config.get("pipeline")
     threads:
         config.get("threads", 1)
     conda:
@@ -952,13 +952,13 @@ rule newick_tree:
         "combined_group"
     shell:
         """
-        export OMP_NUM_THREADS={threads} && FastTreeMP -nt -gamma -spr 4 -log {log} -quiet {input} > {output} || fasttree -nt -gamma -spr 4 -log {log} -quiet {input} > {output}
+        export OMP_NUM_THREADS={threads} && FastTreeMP -nt -gamma -spr 4 -log {log} -quiet {input.msa} > {output.tre} || fasttree -nt -gamma -spr 4 -log {log} -quiet {input.msa} > {output.tre}
         """
 
 
 rule make_deliverables_archive:
     input:
-        "OTU.biom", "OTU.fasta", "OTU.tree", "OTU.txt"
+        "OTU.biom", "OTU.fasta", "OTU.tree", "OTU.txt", "ASV.biom", "ASV.fasta", "ASV.tree", "ASV.txt"
     output:
         "hundo_results.zip"
     conda:
@@ -1028,8 +1028,9 @@ rule build_report:
             "scripts",
             "build_report.py"
         ),
-        biom = "OTU.biom",
-        txt = "OTU.txt",
+        biom = "%s.biom" % config.get("pipeline"),
+        txt = "%s.txt" % config.get("pipeline"),
+        pipeline = config.get("pipeline"),
         archive = "hundo_results.zip",
         params = "PARAMS.txt",
         env = CONDAENV,
@@ -1067,6 +1068,7 @@ rule build_report:
     shell:
         """
         python {input.report_script} --biom {input.biom} --txt {input.txt} \
+            --pipeline {input.pipeline} \
             --zip {input.archive} --env {input.env} --params {input.params} \
             --eeplot 'logs/*_merged_filtered_eestats.txt' \
             --r1quals 'logs/*_R1_eestats.txt' \
