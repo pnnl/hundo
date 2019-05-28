@@ -1026,7 +1026,7 @@ rule build_report:
         report_script = os.path.join(
             os.path.dirname(os.path.abspath(workflow.snakefile)),
             "scripts",
-            "build_report.py"
+            "build_report_%s.py" % config.get("pipeline")
         ),
         biom = "%s.biom" % config.get("pipeline"),
         txt = "%s.txt" % config.get("pipeline"),
