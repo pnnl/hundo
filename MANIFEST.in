@@ -1,3 +1,4 @@
 include hundo/Snakefile
 include hundo/environment.yml
-include hundo/scripts/build_report.py
+include hundo/scripts/build_report_OTU.py
+include hundo/scripts/build_report_ASV.py

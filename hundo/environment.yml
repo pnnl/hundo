@@ -18,7 +18,7 @@ dependencies:
     - pandas=0.24.2
     - pigz=2.3.4
     - pyyaml>=3.12
-    - vsearch=2.6.0
+    - vsearch=2.13.4
     - zip=3.0
     - pip
     - pip:
