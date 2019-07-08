@@ -8,7 +8,7 @@ dependencies:
     - bbmap=37.17
     - biom-format=2.1.6
     - biopython
-    - blast=2.6.0
+    - blast=2.9.0
     - bzip2=1.0.6
     - click=6.7
     - docutils=0.14
