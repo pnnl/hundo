@@ -4,20 +4,22 @@ channels:
     - bioconda
     - defaults
 dependencies:
-    - python>=3.6
+    - python>=3.7
     - bbmap=37.17
-    - biom-format=2.1.6
-    - biopython
+    - conda-forge::biom-format=2.1.7=py37h917ab60_1002
+    - conda-forge::biopython=1.74=py37h01d97ff_0
     - blast=2.9.0
     - bzip2=1.0.6
     - click=6.7
     - docutils=0.14
     - mafft=7.313
     - fasttree=2.1.10
-    - numpy>=1.14.0
-    - pandas=0.24.2
+    - numpy=1.16.2=py37hacdab7b_0
+    - pandas=0.24.2=py37h0a44026_0
     - pigz=2.3.4
     - pyyaml>=3.12
+    - scipy=1.2.1=py37h1410ff5_0
+    - six=1.12.0
     - vsearch=2.6.0
     - zip=3.0
     - pip
