@@ -23,7 +23,7 @@ setup(
     url='https://github.com/pnnl/hundo',
     license='MIT',
     author='Joe Brown',
-    author_email='joe.brown@pnnl.gov',
+    author_email='brwnjm@gmail.com',
     description='Amplicon processing protocol',
     long_description=long_description,
     packages=['hundo'],
